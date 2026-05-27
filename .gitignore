@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+
+# Build / packaging
+*.egg-info/
+
+# Test cache
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Local config (sensitive paths/tokens; use ~/.config/mlx-audio-transcriptor/config.toml)
+config.toml
