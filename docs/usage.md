@@ -24,7 +24,8 @@ python -m app.main
 
 ### 操作手順
 
-1. 言語（`Japanese` / `English`）とモデルを選択する
+1. **処理方式**（`自動 (auto)` / `Apple ネイティブ` / `レガシー (mlx-whisper)`）と**言語**（`Japanese` / `English`）を選択する
+   - **モデル**選択は **legacy（mlx-whisper）専用**。`レガシー` または `自動`（mlx-whisper にフォールバックしうる）を選んだときだけ有効になり、`Apple ネイティブ` では自動的に無効化される（Apple SpeechAnalyzer はモデル選択不要）
 2. 音声ファイルをウィンドウにドラッグ&ドロップする
 3. プログレスバーと経過時間／ETA がリアルタイムで更新される
 4. 完了すると、入力ファイルと同じフォルダに `*.transcript.md` が生成される。
