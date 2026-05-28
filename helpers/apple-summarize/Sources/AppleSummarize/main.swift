@@ -231,24 +231,13 @@ if #available(macOS 26.0, *) {
     guard foundationAvailable() else {
         emitError("MODEL_UNAVAILABLE", "On-device foundation model is not available.")
     }
-    let semaphore = DispatchSemaphore(value: 0)
-    var produced: MinutesOut?
-    var failure: String?
-    Task {
-        do {
-            produced = try await generate(transcript, language: language)
-        } catch {
-            failure = String(describing: error)
-        }
-        semaphore.signal()
+    let minutes: MinutesOut
+    do {
+        minutes = try await generate(transcript, language: language)
+    } catch {
+        emitError("GENERATION_FAILED", String(describing: error))
     }
-    semaphore.wait()
-
-    if let failure = failure {
-        emitError("GENERATION_FAILED", failure)
-    }
-    guard let minutes = produced,
-        let data = try? JSONEncoder().encode(minutes),
+    guard let data = try? JSONEncoder().encode(minutes),
         let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else {
         emitError("ENCODE", "failed to encode minutes")

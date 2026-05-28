@@ -94,36 +94,34 @@ func transcribe(path: String, language: String) async throws -> TranscriptOut {
             userInfo: [NSLocalizedDescriptionKey: "could not open audio file"])
     }
 
-    var segments: [SegmentOut] = []
-
-    let resultsTask = Task {
+    // Collect results inside the task and return them, so we never mutate a
+    // captured var across concurrency domains (Swift 6 strict concurrency).
+    let resultsTask = Task { () -> [SegmentOut] in
+        var collected: [SegmentOut] = []
         for try await result in transcriber.results {
             let text = String(result.text.characters)
-            var start = 0.0
-            var end = 0.0
-            if let range = result.range {
-                start = range.start.seconds
-                end = range.end.seconds
-            }
-            segments.append(
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let range = result.range
+            collected.append(
                 SegmentOut(
-                    start_seconds: start,
-                    end_seconds: end,
+                    start_seconds: range.start.seconds,
+                    end_seconds: range.end.seconds,
                     speaker: nil,
                     confidence: nil,
-                    text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    text: text
                 )
             )
         }
+        return collected
     }
 
     if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
         try await analyzer.finalizeAndFinish(through: lastSample)
     } else {
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
+        await analyzer.cancelAndFinishNow()
     }
-    try await resultsTask.value
 
+    let segments = try await resultsTask.value
     let filtered = segments.filter { !$0.text.isEmpty }
     let rawText = filtered.map { $0.text }.joined(separator: "\n")
     return TranscriptOut(
@@ -161,24 +159,13 @@ let language = arg("--language", in: args) ?? "ja-JP"
 
 #if canImport(Speech)
 if #available(macOS 26.0, *) {
-    let semaphore = DispatchSemaphore(value: 0)
-    var produced: TranscriptOut?
-    var failure: String?
-    Task {
-        do {
-            produced = try await transcribe(path: inputPath, language: language)
-        } catch {
-            failure = String(describing: error)
-        }
-        semaphore.signal()
+    let transcript: TranscriptOut
+    do {
+        transcript = try await transcribe(path: inputPath, language: language)
+    } catch {
+        emitError("TRANSCRIBE_FAILED", String(describing: error))
     }
-    semaphore.wait()
-
-    if let failure = failure {
-        emitError("TRANSCRIBE_FAILED", failure)
-    }
-    guard let transcript = produced,
-        let data = try? JSONEncoder().encode(transcript),
+    guard let data = try? JSONEncoder().encode(transcript),
         let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else {
         emitError("ENCODE", "failed to encode transcript")
