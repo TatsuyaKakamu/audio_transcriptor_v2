@@ -27,7 +27,7 @@ pytest tests/test_file_naming.py  # 特定テスト
 ```
 app/
   cli.py          # CLI エントリポイント（scan / capabilities / transcribe）
-  config.py       # TOML 設定ロード（legacy AppConfig + v2 Config）
+  config/         # TOML 設定（schema.py = dataclass / loader.py = パース）legacy AppConfig + v2 Config
   main.py         # GUI エントリポイント
   ui/             # PySide6 ウィジェット
   services/       # 既存ロジック層（GUI なしで単体テスト可能）

@@ -38,7 +38,7 @@ PipelineResult
 - 自動選択は `app/core/pipeline.py` の `choose_*` / `*_backend_order`。文字起こしは Apple Speech→mlx-whisper、要約は Apple Foundation→Ollama→API→none の順。`mode`（auto/apple_native/legacy）と `advanced.*_backend`（明示指定）で上書き。
 - 実行時フォールバックは `ChainedTranscriptionBackend` / `ChainedSummaryBackend`。要約が全滅したら `summarize()` は `None` を返し、Pipeline は transcript のみ出力する（auto モードの「none に落とす」挙動）。明示指定時は単一 backend なので失敗は例外で停止。
 - Apple 系 backend は `app/core/helper.py` 経由で Swift CLI（`helpers/apple-transcribe`, `helpers/apple-summarize`）を `subprocess` 実行し stdin/stdout JSON でやり取りする。`run_helper_check`（`--check`）/ `run_json_helper`。helper パスは `advanced.apple_*_path` で固定可能。
-- 設定は `app/config.py` の `load_full_config()` → `Config`（`.app` / `.advanced` / `.transcription` / `.summary`）。`config.example.toml` 参照。従来の `load_config()` → `AppConfig` は legacy 用に残置。
+- 設定は `app/config/`（`schema.py` = dataclass / `loader.py` = TOML パース、`__init__.py` で再エクスポート）。`load_full_config()` → `Config`（`.app` / `.advanced` / `.transcription` / `.summary`）。`config.example.toml` 参照。従来の `load_config()` → `AppConfig` は legacy 用に残置。
 - CLI: `python -m app.cli capabilities` で検出結果と選択を表示、`python -m app.cli transcribe <files>` で v2 パイプライン実行。
 - 重い依存（`mlx_whisper` / `tqdm`）は `transcriber.transcribe()` 内で遅延 import。`app/cli.py` を mlx 無し環境でも import できるようにするため。
 - テスト: `test_capabilities.py`, `test_pipeline_selection.py`, `test_summary_contract.py`, `test_transcription_contract.py`, `test_helper_protocol.py`, `test_models_json.py`, `test_io_markdown_v2.py`, `test_pipeline.py`。Apple helper は `conftest.py` の `make_fake_helper` フィクスチャ（JSON を返す実行可能スタブ）で代用する。
@@ -104,7 +104,7 @@ _transcribe_one()  →  transcribe → markdown_writer → [minutes.run_for] →
 `transcriber.py` の `_MODEL_REPO_MAP` でモデル名を HuggingFace リポジトリ名にマッピング。未登録名は `mlx-community/whisper-{name}-mlx` で自動補完。
 
 ### 設定
-`app/config.py` の `load_config()` が `~/.config/mlx-audio-transcriptor/config.toml` を読む（なければコード内デフォルト）。設定キーとデフォルト値は [`config.toml.example`](config.toml.example) を参照。
+`app/config/loader.py` の `load_config()` が `~/.config/mlx-audio-transcriptor/config.toml` を読む（なければコード内デフォルト）。設定キーとデフォルト値は [`config.toml.example`](config.toml.example) を参照。
 
 ## テスト
 
