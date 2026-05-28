@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core import helper as helper_mod
 from app.core.errors import HelperProtocolError
 from app.core.helper import resolve_helper_path, run_helper_check, run_json_helper
 
@@ -82,3 +83,63 @@ def test_resolve_helper_path_prefers_explicit(make_fake_helper) -> None:
     helper = make_fake_helper("apple-summarize", check={"ok": True}, main={"ok": True})
     assert resolve_helper_path("apple-summarize", str(helper)) == helper
     assert resolve_helper_path("apple-summarize", "/missing") is None
+
+
+def _no_build_called(monkeypatch) -> list:
+    calls: list = []
+    monkeypatch.setattr(helper_mod, "_build_attempted", set())
+    monkeypatch.setattr(
+        helper_mod.subprocess, "run", lambda *a, **k: calls.append(a) or None
+    )
+    return calls
+
+
+def test_auto_build_skipped_when_opted_out(monkeypatch) -> None:
+    calls = _no_build_called(monkeypatch)
+    monkeypatch.setenv("AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD", "1")
+    monkeypatch.setattr(helper_mod.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(helper_mod.platform, "mac_ver", lambda: ("26.0", ("", "", ""), ""))
+    monkeypatch.setattr(helper_mod.shutil, "which", lambda _: "/usr/bin/swift")
+    assert helper_mod._maybe_build_helper("apple-summarize") is None
+    assert calls == []  # no swift build attempted
+
+
+def test_auto_build_skipped_on_non_macos(monkeypatch) -> None:
+    calls = _no_build_called(monkeypatch)
+    monkeypatch.delenv("AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD", raising=False)
+    monkeypatch.setattr(helper_mod.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(helper_mod.shutil, "which", lambda _: "/usr/bin/swift")
+    assert helper_mod._maybe_build_helper("apple-summarize") is None
+    assert calls == []
+
+
+def test_auto_build_skipped_on_old_macos(monkeypatch) -> None:
+    calls = _no_build_called(monkeypatch)
+    monkeypatch.delenv("AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD", raising=False)
+    monkeypatch.setattr(helper_mod.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(helper_mod.platform, "mac_ver", lambda: ("15.4", ("", "", ""), ""))
+    monkeypatch.setattr(helper_mod.shutil, "which", lambda _: "/usr/bin/swift")
+    assert helper_mod._maybe_build_helper("apple-summarize") is None
+    assert calls == []
+
+
+def test_auto_build_attempted_once_per_process(monkeypatch) -> None:
+    calls = _no_build_called(monkeypatch)
+    monkeypatch.delenv("AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD", raising=False)
+    monkeypatch.setattr(helper_mod.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(helper_mod.platform, "mac_ver", lambda: ("26.0", ("", "", ""), ""))
+    monkeypatch.setattr(helper_mod.shutil, "which", lambda _: "/usr/bin/swift")
+
+    def fake_run(*a, **k):
+        calls.append(a)
+
+        class _R:
+            returncode = 1
+            stderr = "boom"
+
+        return _R()
+
+    monkeypatch.setattr(helper_mod.subprocess, "run", fake_run)
+    assert helper_mod._maybe_build_helper("apple-summarize") is None
+    assert helper_mod._maybe_build_helper("apple-summarize") is None
+    assert len(calls) == 1  # second call short-circuits via _build_attempted

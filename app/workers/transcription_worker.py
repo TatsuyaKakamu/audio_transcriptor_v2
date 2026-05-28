@@ -53,6 +53,9 @@ class TranscriptionWorker(QThread):
         failure_count = 0
 
         config = self._build_config()
+        self.status_update.emit(
+            "バックエンドを準備中…（初回は Apple helper のビルドに時間がかかる場合があります）"
+        )
         try:
             pipeline, selection = build_pipeline(config)
         except NoTranscriptionBackendError as e:

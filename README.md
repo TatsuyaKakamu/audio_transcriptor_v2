@@ -74,16 +74,23 @@ python -m app.cli transcribe path/to/meeting.m4a
 
 `auto` モードでは実行時の失敗も自動でフォールバックする（例: Apple Foundation が失敗したら Ollama → API → なし）。
 
-### Apple helper のビルド（任意 / macOS 26 以降）
+### Apple helper（自動ビルド / macOS 26 以降）
 
-Apple SpeechAnalyzer / Foundation Models を使うには、**macOS 26 以降**で Swift helper をビルドする。
+Apple SpeechAnalyzer / Foundation Models 用の Swift helper は、**初回実行時に自動でビルド**される
+（GUI / CLI どちらでも）。手動で `swift build` する必要はない。条件は次のとおり:
+
+- macOS 26 以降
+- Swift ツールチェイン（Xcode または Command Line Tools）が入っていること
+
+初回だけビルドに時間がかかり、以降はビルド済みバイナリ（`helpers/*/.build/release/`）が再利用される。
+ビルド不可・利用不可の環境では mlx-whisper / Ollama に自動フォールバックする。
+
+自動ビルドを止めたい場合は環境変数 `AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD=1` を設定する。手動ビルドも可:
 
 ```bash
 (cd helpers/apple-transcribe && swift build -c release)
 (cd helpers/apple-summarize && swift build -c release)
 ```
-
-ビルド済みバイナリは自動検出される。未ビルド・利用不可の環境では mlx-whisper / Ollama に自動フォールバックする。
 
 ## レガシー動作モード（mlx-whisper / Ollama）
 

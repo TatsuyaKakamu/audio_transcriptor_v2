@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,32 +20,100 @@ from app.core.errors import HelperProtocolError
 
 logger = logging.getLogger(__name__)
 
-# Repo-root-relative location where `swift build` drops the release binaries.
+# Repo-root-relative Swift packages for the helpers.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_HELPER_DIRS = {
-    "apple-transcribe": _REPO_ROOT / "helpers" / "apple-transcribe" / ".build" / "release",
-    "apple-summarize": _REPO_ROOT / "helpers" / "apple-summarize" / ".build" / "release",
+_HELPER_PACKAGES = {
+    "apple-transcribe": _REPO_ROOT / "helpers" / "apple-transcribe",
+    "apple-summarize": _REPO_ROOT / "helpers" / "apple-summarize",
 }
+
+# Set this env var to skip the automatic `swift build` (e.g. CI, metered links).
+_NO_BUILD_ENV = "AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD"
+
+# One build attempt per helper per process, so a failure isn't retried forever.
+_build_attempted: set[str] = set()
+
+
+def _built_binary(name: str) -> Path | None:
+    pkg = _HELPER_PACKAGES.get(name)
+    if pkg is None:
+        return None
+    candidate = pkg / ".build" / "release" / name
+    return candidate if candidate.exists() else None
+
+
+def _macos_supports_helpers() -> bool:
+    if platform.system() != "Darwin":
+        return False
+    version = platform.mac_ver()[0]
+    try:
+        return int(version.split(".")[0]) >= 26
+    except (ValueError, IndexError):
+        return False
+
+
+def _maybe_build_helper(name: str) -> Path | None:
+    """Build the Swift helper on first use; cached for subsequent runs.
+
+    Guarded so it only ever runs where it can succeed and help: macOS 26+,
+    a `swift` toolchain present, the package sources exist, and not opted out.
+    """
+    if name in _build_attempted or os.environ.get(_NO_BUILD_ENV):
+        return None
+    _build_attempted.add(name)
+
+    pkg = _HELPER_PACKAGES.get(name)
+    if pkg is None or not (pkg / "Package.swift").exists():
+        return None
+    if not _macos_supports_helpers() or shutil.which("swift") is None:
+        return None
+
+    logger.info("Building Apple helper %s (first run; this may take a minute)...", name)
+    try:
+        proc = subprocess.run(
+            ["swift", "build", "-c", "release"],
+            cwd=str(pkg),
+            capture_output=True,
+            text=True,
+            timeout=900.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.warning("auto-build of helper %s failed: %s", name, e)
+        return None
+    if proc.returncode != 0:
+        logger.warning(
+            "auto-build of helper %s failed (exit %s): %s",
+            name,
+            proc.returncode,
+            (proc.stderr or "").strip()[:300],
+        )
+        return None
+
+    built = _built_binary(name)
+    if built is not None:
+        logger.info("Built Apple helper %s -> %s", name, built)
+    return built
 
 
 def resolve_helper_path(name: str, explicit_path: str | None = None) -> Path | None:
     """Find a helper executable.
 
-    Order: explicit config path -> repo build directory -> PATH.
-    Returns None when the helper cannot be located.
+    Order: explicit config path -> repo build directory -> PATH -> auto-build.
+    Returns None when the helper cannot be located or built.
     """
     if explicit_path:
         candidate = Path(explicit_path).expanduser()
         return candidate if candidate.exists() else None
 
-    build_dir = _HELPER_DIRS.get(name)
-    if build_dir is not None:
-        candidate = build_dir / name
-        if candidate.exists():
-            return candidate
+    built = _built_binary(name)
+    if built is not None:
+        return built
 
     found = shutil.which(name)
-    return Path(found) if found else None
+    if found:
+        return Path(found)
+
+    return _maybe_build_helper(name)
 
 
 def _run(path: Path, args: list[str], input_text: str | None, timeout: float | None) -> str:

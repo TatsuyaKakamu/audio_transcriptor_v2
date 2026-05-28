@@ -9,6 +9,10 @@ __pycache__/
 # Build / packaging
 *.egg-info/
 
+# Swift helper build artifacts (auto-built on first run)
+.build/
+helpers/**/.build/
+
 # Test cache
 .pytest_cache/
 
