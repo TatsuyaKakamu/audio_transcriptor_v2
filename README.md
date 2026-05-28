@@ -2,8 +2,25 @@
 
 ![mlx-audio-transcriptor](docs/images/hero.jpg)
 
-macOS Apple Silicon 上で動作する、ローカル音声文字起こし GUI アプリ。  
-`wav` / `mp3` ファイルをドラッグ&ドロップすると `mlx-whisper` で文字起こしし、同フォルダに Markdown ファイルを保存する。
+macOS 上で音声ファイルを文字起こしし、議事録 Markdown を自動生成するローカルアプリ。
+
+## 特徴
+
+- macOS 上で音声ファイルを文字起こしし、議事録 Markdown を生成
+- 利用可能な場合は Apple のオンデバイス機能（SpeechAnalyzer / Foundation Models）を自動使用
+- 追加セットアップなしで動作する構成を優先
+- 旧環境では mlx-whisper / Ollama にフォールバック可能
+
+## 基本設定
+
+通常は設定不要です。アプリは利用可能な処理方式を自動で選択します。
+
+```toml
+[app]
+mode = "auto"
+```
+
+詳細なバックエンド選択やフォールバックの仕組みは [バックエンド抽象化](#バックエンド抽象化autoモード) を参照。
 
 ## 動作環境
 
@@ -297,6 +314,62 @@ mlx-audio-transcriptor/
     ├── test_minutes_writer.py
     └── test_auto_pr.py
 ```
+
+## バックエンド抽象化（auto モード）
+
+文字起こしと議事録生成は、環境に応じて最適なバックエンドを自動選択する。
+ユーザーが意識する設定は `[app] mode` だけでよい。
+
+### 自動選択の優先順位
+
+| 処理 | 優先順位 |
+|---|---|
+| 文字起こし | Apple SpeechAnalyzer → mlx-whisper（+ ffmpeg） |
+| 議事録生成 | Apple Foundation Models → Ollama → 外部 API → なし |
+
+`mode` で全体方針を切り替えられる。
+
+| mode | 意味 |
+|---|---|
+| `auto` | 利用可能な最良バックエンドを自動選択（推奨） |
+| `apple_native` | Apple Speech + Apple Foundation を要求。失敗時は停止 |
+| `legacy` | mlx-whisper + Ollama を優先 |
+
+`auto` モードでは実行時の失敗も自動でフォールバックする（例: Apple Foundation が失敗したら Ollama → API → なし）。
+
+### バックエンドの確認・実行（CLI）
+
+```bash
+# 検出されたバックンドと自動選択結果を表示
+python -m app.cli capabilities
+
+# 指定ファイルを文字起こし＋議事録生成
+python -m app.cli transcribe path/to/meeting.m4a
+```
+
+出力は音声ファイルと同じフォルダに `*.transcript.md` / `*.transcript.json` /
+`*.minutes.md` / `*.minutes.json` として保存される。
+
+### Apple helper のビルド（任意）
+
+Apple SpeechAnalyzer / Foundation Models を使うには、macOS 26 以降で Swift helper をビルドする。
+
+```bash
+(cd helpers/apple-transcribe && swift build -c release)
+(cd helpers/apple-summarize && swift build -c release)
+```
+
+ビルド済みバイナリは自動検出される。未ビルド・利用不可の環境では mlx-whisper / Ollama に自動フォールバックする。
+
+設定例は [`config.example.toml`](config.example.toml) を参照。
+
+<details>
+<summary>旧来（legacy）の使い方</summary>
+
+`mlx-whisper` + `Ollama` 構成は引き続き利用できる。GUI / 自動監視（launchd）フローは
+従来どおり動作する。詳細は上記「2 つの使い方」を参照。
+
+</details>
 
 ## テスト
 

@@ -1,0 +1,44 @@
+# Minimal configuration for the audio-minutes pipeline.
+#
+# Normally you do not need to configure anything: the app auto-detects which
+# backends are available and picks the best one. Copy this file to
+# ~/.config/mlx-audio-transcriptor/config.toml only if you want to override.
+
+[app]
+# auto         -> pick the best available backend (recommended)
+# apple_native -> require Apple Speech + Apple Foundation (fail if unavailable)
+# legacy       -> prefer mlx-whisper + Ollama
+mode = "auto"
+language = "ja-JP"
+# "same_as_audio" writes outputs next to the source file; or set an absolute dir.
+output_directory = "same_as_audio"
+
+[advanced]
+# auto | apple_speech | mlx_whisper
+transcription_backend = "auto"
+# auto | apple_foundation | ollama | api | none
+summary_backend = "auto"
+# Optional: pin helper executables (otherwise resolved from PATH / repo build dir)
+# apple_transcribe_path = ""
+# apple_summarize_path = ""
+
+[transcription]
+model = "medium"
+vad_enabled = true
+
+[summary]
+output_language = "ja"
+include_evidence = true
+max_input_chars = 30000
+request_timeout_seconds = 600
+
+[summary.ollama]
+host = "http://localhost:11434"
+model = "gemma4"
+num_ctx = 32768
+
+[summary.api]
+provider = "openai"
+model = "gpt-4.1-mini"
+api_key_env = "OPENAI_API_KEY"
+base_url = "https://api.openai.com/v1"

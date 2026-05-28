@@ -17,6 +17,32 @@ pytest tests/test_file_naming.py   # 特定テスト
 
 ## アーキテクチャ
 
+### v2 バックエンド抽象化（`app/core`, `app/transcription`, `app/summary`, `app/io`）
+
+`docs/requirements/audio_transcript_project_requirements_v2.md` に基づく差し替え可能なパイプライン層。
+従来の `app/services/*`（GUI / launchd フロー）は温存しつつ、その上に抽象化レイヤを追加している。
+
+```
+detect_capabilities(Config) → Capabilities
+        ↓
+build_pipeline(Config, Capabilities)  ─  transcription/summary の order を決定し factory で構築
+        ↓                                  （複数候補は Chained* backend に包んで実行時フォールバック）
+Pipeline.run(audio) → TranscriptionBackend.transcribe() → Transcript
+        ↓ writers.write_transcript_{json,md}
+        ↓ SummaryBackend.summarize() → MeetingMinutes | None
+        ↓ writers.write_minutes_{json,md}
+PipelineResult
+```
+
+- 中間表現は `app/core/models.py`（`Transcript`, `TranscriptSegment`, `MeetingMinutes`, `ActionItem`）。JSON 変換関数も同居。
+- 自動選択は `app/core/pipeline.py` の `choose_*` / `*_backend_order`。文字起こしは Apple Speech→mlx-whisper、要約は Apple Foundation→Ollama→API→none の順。`mode`（auto/apple_native/legacy）と `advanced.*_backend`（明示指定）で上書き。
+- 実行時フォールバックは `ChainedTranscriptionBackend` / `ChainedSummaryBackend`。要約が全滅したら `summarize()` は `None` を返し、Pipeline は transcript のみ出力する（auto モードの「none に落とす」挙動）。明示指定時は単一 backend なので失敗は例外で停止。
+- Apple 系 backend は `app/core/helper.py` 経由で Swift CLI（`helpers/apple-transcribe`, `helpers/apple-summarize`）を `subprocess` 実行し stdin/stdout JSON でやり取りする。`run_helper_check`（`--check`）/ `run_json_helper`。helper パスは `advanced.apple_*_path` で固定可能。
+- 設定は `app/config.py` の `load_full_config()` → `Config`（`.app` / `.advanced` / `.transcription` / `.summary`）。`config.example.toml` 参照。従来の `load_config()` → `AppConfig` は legacy 用に残置。
+- CLI: `python -m app.cli capabilities` で検出結果と選択を表示、`python -m app.cli transcribe <files>` で v2 パイプライン実行。
+- 重い依存（`mlx_whisper` / `tqdm`）は `transcriber.transcribe()` 内で遅延 import。`app/cli.py` を mlx 無し環境でも import できるようにするため。
+- テスト: `test_capabilities.py`, `test_pipeline_selection.py`, `test_summary_contract.py`, `test_transcription_contract.py`, `test_helper_protocol.py`, `test_models_json.py`, `test_io_markdown_v2.py`, `test_pipeline.py`。Apple helper は `conftest.py` の `make_fake_helper` フィクスチャ（JSON を返す実行可能スタブ）で代用する。
+
 ### データフロー（GUI）
 
 ```

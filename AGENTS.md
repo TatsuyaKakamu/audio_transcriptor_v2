@@ -26,14 +26,19 @@ pytest tests/test_file_naming.py  # 特定テスト
 
 ```
 app/
-  cli.py          # CLI エントリポイント
-  config.py       # TOML 設定ロード（~/.config/mlx-audio-transcriptor/config.toml）
+  cli.py          # CLI エントリポイント（scan / capabilities / transcribe）
+  config.py       # TOML 設定ロード（legacy AppConfig + v2 Config）
   main.py         # GUI エントリポイント
   ui/             # PySide6 ウィジェット
-  services/       # ロジック層（GUI なしで単体テスト可能）
+  services/       # 既存ロジック層（GUI なしで単体テスト可能）
   workers/        # QThread ワーカー
   models/         # dataclass（Segment, TranscriptionResult）
-tests/            # pytest（services/ 層のみ対象、mlx-whisper/silero_vad は対象外）
+  core/           # v2: models / capabilities / pipeline / errors / helper
+  transcription/  # v2: TranscriptionBackend 抽象化（apple_speech / mlx_whisper）
+  summary/        # v2: SummaryBackend 抽象化（apple_foundation / ollama / api / none）
+  io/             # v2: Markdown / JSON writers
+helpers/          # Swift helper CLI（apple-transcribe / apple-summarize）
+tests/            # pytest（services/ + core/transcription/summary/io 層）
 scripts/          # launchd watcher のインストール/アンインストール
 docs/             # ドキュメント・要件書
 ```
