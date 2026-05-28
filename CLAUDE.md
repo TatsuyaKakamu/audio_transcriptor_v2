@@ -109,7 +109,7 @@ _transcribe_one()  →  transcribe → markdown_writer → [minutes.run_for] →
 `transcriber.py` の `_MODEL_REPO_MAP` でモデル名を HuggingFace リポジトリ名にマッピング。未登録名は `mlx-community/whisper-{name}-mlx` で自動補完。
 
 ### 設定
-`app/config/loader.py` の `load_config()` が `~/.config/mlx-audio-transcriptor/config.toml` を読む（なければコード内デフォルト）。設定キーとデフォルト値は [`config.toml.example`](config.toml.example) を参照。
+`app/config/loader.py` の `load_config()` が `~/.config/audio-transcriptor/config.toml` を読む（なければコード内デフォルト）。設定キーとデフォルト値は [`config.toml.example`](config.toml.example) を参照。
 
 ## テスト
 

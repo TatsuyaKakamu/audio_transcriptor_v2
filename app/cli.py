@@ -21,10 +21,10 @@ from app.services import (
     transcriber,
 )
 
-logger = logging.getLogger("mlx_audio_transcriptor.cli")
+logger = logging.getLogger("audio_transcriptor.cli")
 
-_LOCK_PATH = Path.home() / ".cache" / "mlx-audio-transcriptor" / "scan.lock"
-_LOG_DIR = Path.home() / "Library" / "Logs" / "mlx-audio-transcriptor"
+_LOCK_PATH = Path.home() / ".cache" / "audio-transcriptor" / "scan.lock"
+_LOG_DIR = Path.home() / "Library" / "Logs" / "audio-transcriptor"
 _CLI_LOG_PATH = _LOG_DIR / "cli.log"
 _STABILITY_TIMEOUT_SEC = 120.0
 _STABILITY_POLL_SEC = 1.0
@@ -243,7 +243,7 @@ def cmd_transcribe(paths: list[str]) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="app.cli", description="mlx-audio-transcriptor headless CLI")
+    p = argparse.ArgumentParser(prog="app.cli", description="audio-transcriptor headless CLI")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("scan", help="scan watch_dir for pending audio files and transcribe them")
     sub.add_parser("capabilities", help="show detected backends and the auto selection")

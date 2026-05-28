@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Uninstall the mlx-audio-transcriptor launchd watcher.
+# Uninstall the audio-transcriptor launchd watcher.
 
 set -euo pipefail
 
-LABEL="com.mlx-audio-transcriptor.watcher"
+LABEL="com.audio-transcriptor.watcher"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 UID_NUM="$(id -u)"
 
