@@ -19,5 +19,5 @@ helpers/**/.build/
 # macOS
 .DS_Store
 
-# Local config (sensitive paths/tokens; use ~/.config/mlx-audio-transcriptor/config.toml)
+# Local config (sensitive paths/tokens; use ~/.config/audio-transcriptor/config.toml)
 config.toml

@@ -2,7 +2,7 @@
 #
 # Normally you do not need to configure anything: the app auto-detects which
 # backends are available and picks the best one. Copy this file to
-# ~/.config/mlx-audio-transcriptor/config.toml only if you want to override.
+# ~/.config/audio-transcriptor/config.toml only if you want to override.
 
 [app]
 # auto         -> pick the best available backend (recommended)

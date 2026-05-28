@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.mlx-audio-transcriptor.watcher</string>
+    <string>com.audio-transcriptor.watcher</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -36,8 +36,8 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/Library/Logs/mlx-audio-transcriptor/stdout.log</string>
+    <string>__HOME__/Library/Logs/audio-transcriptor/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>__HOME__/Library/Logs/mlx-audio-transcriptor/stderr.log</string>
+    <string>__HOME__/Library/Logs/audio-transcriptor/stderr.log</string>
 </dict>
 </plist>

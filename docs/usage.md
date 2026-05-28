@@ -1,60 +1,18 @@
-# レガシー動作モード（mlx-whisper / Ollama）
+# 使い方ガイド（GUI / Downloads 自動監視）
 
-macOS 26 未満の環境や、Apple のオンデバイス機能を使わず従来構成で運用したい場合は、
-**mlx-whisper（文字起こし）+ Ollama（議事録生成）** のレガシー構成で動作する。
-`config.toml` の `[app] mode = "legacy"` を指定すると、この構成が優先される。
-
-このドキュメントは GUI アプリ・Downloads 自動監視（launchd）・Ollama 議事録生成・
-自動 PR など、レガシー動作の詳細手順をまとめたもの。auto モードの概要は
-[README](../README.md) を参照。
-
-## 動作環境（レガシー）
-
-- macOS（Apple Silicon 必須）
-- Python 3.11 以上
-- 仮想環境推奨
-- `ffmpeg`（mlx-whisper が音声デコードに使用）
-
-## 2 つの使い方
-
-レガシー構成は 2 通りの使い方ができる。用途で選択する。
+このアプリの**使い方は 2 通り**。どちらを選んでも、内部では同じ v2 パイプラインを通り、
+`mode`（auto / apple_native / legacy）に応じてバックエンドを選ぶ。つまり**使い方の選択と
+バックエンドの選択は独立**している。auto モードの概要は [README](../README.md) を参照。
 
 | 使い方 | 向いている場面 | 操作 |
 |--------|---------------|------|
-| **A. GUI アプリで手動文字起こし** | 任意のファイルをその都度処理したい | アプリを起動して `wav` / `mp3` をドラッグ&ドロップ |
+| **A. GUI アプリで手動文字起こし** | 任意のファイルをその都度処理したい | アプリを起動して音声ファイルをドラッグ&ドロップ |
 | **B. Downloads フォルダの自動監視** | iPhone から AirDrop で送った音声を放置で処理したい | LaunchAgent をインストール（初回のみ）。以降は `~/Downloads` に置くだけ |
 
-両方を併用してもよい。設定ファイル（`~/.config/mlx-audio-transcriptor/config.toml`）は GUI と CLI で共通で、議事録生成（Ollama 連携）も共通で動く。
+両方を併用してもよい。設定ファイル（`~/.config/audio-transcriptor/config.toml`）は GUI と CLI で共通で、議事録生成も共通で動く。
 
-## 事前準備
-
-### ffmpeg
-
-`mlx-whisper` は音声ファイルのデコードに `ffmpeg` を使用するため、システムに `ffmpeg` をインストールしておく必要がある。`.mp3` を扱う場合は必須。
-
-```bash
-brew install ffmpeg
-```
-
-インストール確認:
-
-```bash
-ffmpeg -version
-```
-
-### Ollama（議事録生成を使う場合）
-
-文字起こし完了後、ローカルの Ollama を呼んで議事録 Markdown を自動生成する。
-Ollama 未インストールでも文字起こし自体は完走するが、議事録生成だけが毎回失敗する。
-不要なら `~/.config/mlx-audio-transcriptor/config.toml` の `[minutes].enabled = false` で無効化できる。
-
-```bash
-brew install ollama
-ollama serve &           # 別タブで起動しっぱなしにする
-ollama pull gemma4       # 既定モデル。config.toml の [minutes].model と一致させる
-```
-
-`ollama list` で取得済みモデルを確認できる。
+> 「レガシー」という語はバックエンド（mlx-whisper / Ollama）を指すものであり、使い方の区別ではない。
+> GUI も Downloads 監視も、Apple ネイティブ（V2）／legacy のどちらのバックエンドでも同じ手順で使える。
 
 ## 使い方 A: GUI アプリで手動文字起こし
 
@@ -66,13 +24,17 @@ python -m app.main
 
 ### 操作手順
 
-1. 言語（`Japanese` / `English`）とモデルを選択する
-2. `wav` または `mp3` ファイルをウィンドウにドラッグ&ドロップする
+1. **処理方式**（`自動 (auto)` / `Apple ネイティブ` / `レガシー (mlx-whisper)`）と**言語**（`Japanese` / `English`）を選択する
+   - **モデル**選択は **legacy（mlx-whisper）専用**。`レガシー` または `自動`（mlx-whisper にフォールバックしうる）を選んだときだけ有効になり、`Apple ネイティブ` では自動的に無効化される（Apple SpeechAnalyzer はモデル選択不要）
+2. 音声ファイルをウィンドウにドラッグ&ドロップする
 3. プログレスバーと経過時間／ETA がリアルタイムで更新される
 4. 完了すると、入力ファイルと同じフォルダに `*.transcript.md` が生成される。
-   `[minutes].enabled = true`（既定）かつ Ollama が動作していれば、続けて `<YYYY-MM-DD>_<英語スラッグ>.md` という議事録ファイルも同じフォルダに生成される
+   議事録バックエンドが利用可能（Apple Foundation Models、または Ollama）なら、続けて
+   `<YYYY-MM-DD>_<英語スラッグ>.md` という議事録ファイルも同じフォルダに生成される
 
 複数ファイルを同時にドロップ可。逐次処理。
+
+> GUI はファイル単位の進捗を表示する（Apple helper 経路はフレーム単位の進捗を返さないため）。
 
 ## 使い方 B: Downloads フォルダの自動監視（launchd）
 
@@ -87,26 +49,16 @@ iPhone から AirDrop などで `~/Downloads` に音声が入ったら、GUI を
 
 ### 使い方
 
-1. `~/Downloads` に `.wav` / `.mp3` を保存する（AirDrop / コピーなど）
+1. `~/Downloads` に音声ファイルを保存する（AirDrop / コピーなど）
 2. 数十秒待つと同フォルダに `*.transcript.md`（および議事録 `.md`）が生成される
 3. 元の音源は自動でゴミ箱へ移動される（`trash_source_after_success = false` で無効化可）
 4. 処理開始 / 25%・50%・75% 進捗 / 完了は macOS 通知センターへ届く
 
 ### 詳細
 
-フルディスクアクセス権限の付与、ログの確認、トラブルシュートなどは [`mac-watcher-setup.md`](mac-watcher-setup.md) を参照。設定ファイル `~/.config/mlx-audio-transcriptor/config.toml` は GUI の既定言語／モデル選択にも反映される。
+フルディスクアクセス権限の付与、ログの確認、トラブルシュートなどは [`mac-watcher-setup.md`](mac-watcher-setup.md) を参照。設定ファイル `~/.config/audio-transcriptor/config.toml` は GUI の既定言語／モデル選択にも反映される。
 
-## 処理の流れ
-
-1. **VAD 前処理** — silero-vad で無音区間を除去し、発話区間のみ連結した PCM を生成する
-2. **文字起こし** — mlx-whisper（Apple Silicon MLX）に渡して書き起こす
-3. **タイムスタンプ再マッピング** — VAD で圧縮した時間軸を元ファイルのタイムラインに戻す
-4. **Markdown 保存** — 同フォルダに `*.transcript.md` として出力する
-5. **議事録生成（任意）** — `[minutes].enabled = true` のとき、トランスクリプトを Ollama (`/api/generate`) に投げて議事録 Markdown を生成する。失敗してもトランスクリプト本体は保持され、ゴミ箱送りも実行される（best-effort）
-
-> VAD は常時有効で UI から切り替えは不可。
-
-## 出力フォーマット（レガシー）
+## 出力フォーマット
 
 ```markdown
 ---
@@ -123,9 +75,11 @@ model: medium
 タイムスタンプは `MM:SS.mmm`、1時間超は `HH:MM:SS.mmm`。
 同名ファイルが存在する場合は `meeting.transcript.1.md` のように連番が付く。
 
-## 議事録生成（Ollama 連携）
+## 議事録生成
 
-`[minutes].enabled = true`（既定）のとき、トランスクリプト書き出し直後にローカルの Ollama を呼び出して議事録 Markdown を生成する。GUI・CLI どちらの経路でも動く。
+`[minutes].enabled = true`（既定）のとき、トランスクリプト書き出し直後に議事録 Markdown を生成する。
+GUI・CLI どちらの使い方でも動く。バックエンドは `mode` に応じて Apple Foundation Models（V2）または
+Ollama（legacy）が選ばれる。以下は **Ollama（legacy バックエンド）** を使う場合の詳細。
 
 ### 出力ファイル
 
@@ -146,7 +100,7 @@ ollama_model: gemma4
 topic: 予算会議
 ---
 
-（Ollama が生成した本文）
+（生成された本文）
 
 ---
 原文書き起こし: [meeting.transcript.md](meeting.transcript.md)
@@ -174,7 +128,7 @@ CLI では macOS 通知センターに「議事録生成失敗」が届き、GUI
 
 ## 任意 Git リポジトリへの自動 PR (`[auto_pr]`)
 
-`[auto_pr].enabled = true` のとき、文字起こし（および議事録）書き出し直後に、指定したローカルクローンの Git リポジトリへ自動でブランチを作成 → コミット → push → `gh pr create` で PR を作成する。launchd watcher 経由の自動運用に組み込む想定。GUI 経路には組み込んでいない。
+`[auto_pr].enabled = true` のとき、文字起こし（および議事録）書き出し直後に、指定したローカルクローンの Git リポジトリへ自動でブランチを作成 → コミット → push → `gh pr create` で PR を作成する。Downloads 自動監視（launchd）経由の自動運用に組み込む想定。GUI 経路には組み込んでいない。
 
 ### 動作
 
@@ -225,7 +179,51 @@ gh_repo = ""                               # 空なら origin remote から自�
 
 PR 作成中の任意のステップで失敗した場合、トランスクリプト本体は保持されるが、`trash_source_after_success` による元音声のゴミ箱送りは **スキップ** される（後から手動 push できるよう元ファイルを残す）。
 
-## モデル（mlx-whisper）
+## legacy バックエンドの事前準備（mlx-whisper / Ollama）
+
+`mode = "legacy"`（または auto モードで Apple ネイティブが使えずフォールバックする場合）に
+mlx-whisper / Ollama を使うには、次の準備が必要。Apple ネイティブ（V2）バックエンドのみを使う場合は不要。
+
+### 動作環境（legacy バックエンド）
+
+- macOS（Apple Silicon 必須）
+- Python 3.11 以上
+- `ffmpeg`（mlx-whisper が音声デコードに使用）
+
+### ffmpeg
+
+`mlx-whisper` は音声ファイルのデコードに `ffmpeg` を使用するため、システムに `ffmpeg` をインストールしておく必要がある。`.mp3` を扱う場合は必須。
+
+```bash
+brew install ffmpeg
+ffmpeg -version          # インストール確認
+```
+
+### Ollama（議事録生成を legacy で使う場合）
+
+文字起こし完了後、ローカルの Ollama を呼んで議事録 Markdown を生成する。
+Ollama 未インストールでも文字起こし自体は完走するが、Ollama 経路の議事録生成は失敗する
+（auto モードなら「議事録なし」に落ちる）。不要なら `config.toml` の `[minutes].enabled = false` で無効化できる。
+
+```bash
+brew install ollama
+ollama serve &           # 別タブで起動しっぱなしにする
+ollama pull gemma4       # 既定モデル。config.toml の [minutes].model と一致させる
+```
+
+`ollama list` で取得済みモデルを確認できる。
+
+### mlx-whisper の処理の流れ
+
+mlx-whisper backend は内部で次の手順を踏む:
+
+1. **VAD 前処理** — silero-vad で無音区間を除去し、発話区間のみ連結した PCM を生成する
+2. **文字起こし** — mlx-whisper（Apple Silicon MLX）に渡して書き起こす
+3. **タイムスタンプ再マッピング** — VAD で圧縮した時間軸を元ファイルのタイムラインに戻す
+
+> VAD は常時有効で UI から切り替えは不可。
+
+### モデル（mlx-whisper）
 
 | モデル | 備考 |
 |--------|------|

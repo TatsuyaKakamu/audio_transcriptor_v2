@@ -14,7 +14,7 @@ launchd の `WatchPaths` で Downloads の変化を検知し、ヘッドレス C
 - 仮想環境と依存パッケージが導入済み
 
 ```bash
-cd /path/to/mlx-audio-transcriptor
+cd /path/to/audio-transcriptor
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -26,14 +26,14 @@ pip install -r requirements.txt
 
 ## 2. （任意）設定をカスタマイズする
 
-このステップは任意です。次の §3 でインストールスクリプトを実行すると `~/.config/mlx-audio-transcriptor/config.toml` が自動的に用意されます。デフォルト値（`config.toml.example` と同じ）で良ければスキップして §3 へ進んでください。言語・モデル・監視先などを初回起動前に変えたい場合だけ、以下の手順で先に作成・編集します。
+このステップは任意です。次の §3 でインストールスクリプトを実行すると `~/.config/audio-transcriptor/config.toml` が自動的に用意されます。デフォルト値（`config.toml.example` と同じ）で良ければスキップして §3 へ進んでください。言語・モデル・監視先などを初回起動前に変えたい場合だけ、以下の手順で先に作成・編集します。
 
 ```bash
-mkdir -p ~/.config/mlx-audio-transcriptor
-cp config.toml.example ~/.config/mlx-audio-transcriptor/config.toml
+mkdir -p ~/.config/audio-transcriptor
+cp config.toml.example ~/.config/audio-transcriptor/config.toml
 ```
 
-`~/.config/mlx-audio-transcriptor/config.toml` を好みに応じて編集します。
+`~/.config/audio-transcriptor/config.toml` を好みに応じて編集します。
 
 ```toml
 language = "ja"
@@ -60,15 +60,15 @@ trash_source_after_success = true
 
 スクリプトが行うこと:
 
-1. `~/Library/Logs/mlx-audio-transcriptor/` を作成
-2. `~/.config/mlx-audio-transcriptor/config.toml` が無ければ `config.toml.example` をコピー
-3. `scripts/com.mlx-audio-transcriptor.watcher.plist.template` のプレースホルダ（venv Python / プロジェクトルート / 監視先 / ホーム）を置換して `~/Library/LaunchAgents/com.mlx-audio-transcriptor.watcher.plist` に書き出し
+1. `~/Library/Logs/audio-transcriptor/` を作成
+2. `~/.config/audio-transcriptor/config.toml` が無ければ `config.toml.example` をコピー
+3. `scripts/com.audio-transcriptor.watcher.plist.template` のプレースホルダ（venv Python / プロジェクトルート / 監視先 / ホーム）を置換して `~/Library/LaunchAgents/com.audio-transcriptor.watcher.plist` に書き出し
 4. `launchctl bootout`（既存登録を解除）→ `launchctl bootstrap`（再登録）
 
 登録確認:
 
 ```bash
-launchctl print gui/$(id -u)/com.mlx-audio-transcriptor.watcher | head
+launchctl print gui/$(id -u)/com.audio-transcriptor.watcher | head
 ```
 
 ---
@@ -84,7 +84,7 @@ launchctl print gui/$(id -u)/com.mlx-audio-transcriptor.watcher | head
 手動で CLI を試すこともできます:
 
 ```bash
-cd /path/to/mlx-audio-transcriptor
+cd /path/to/audio-transcriptor
 .venv/bin/python -m app.cli scan
 ```
 
@@ -92,24 +92,24 @@ cd /path/to/mlx-audio-transcriptor
 
 ## 5. ログ
 
-- 標準出力: `~/Library/Logs/mlx-audio-transcriptor/stdout.log`
-- 標準エラー: `~/Library/Logs/mlx-audio-transcriptor/stderr.log`（`logging` モジュールの出力はこちら）
+- 標準出力: `~/Library/Logs/audio-transcriptor/stdout.log`
+- 標準エラー: `~/Library/Logs/audio-transcriptor/stderr.log`（`logging` モジュールの出力はこちら）
 
 ```bash
-tail -f ~/Library/Logs/mlx-audio-transcriptor/stderr.log
+tail -f ~/Library/Logs/audio-transcriptor/stderr.log
 ```
 
 ---
 
 ## 6. フルディスクアクセス権限について
 
-`~/Downloads` は macOS のプライバシー保護対象です。launchd から起動した子プロセスが「ファイルが見えない」状態になる場合は、システム設定 → プライバシーとセキュリティ → **フルディスクアクセス** に、`install-watcher.sh` で plist に書き込まれた Python バイナリ（通常 `/path/to/mlx-audio-transcriptor/.venv/bin/python3.x`）を追加してください。
+`~/Downloads` は macOS のプライバシー保護対象です。launchd から起動した子プロセスが「ファイルが見えない」状態になる場合は、システム設定 → プライバシーとセキュリティ → **フルディスクアクセス** に、`install-watcher.sh` で plist に書き込まれた Python バイナリ（通常 `/path/to/audio-transcriptor/.venv/bin/python3.x`）を追加してください。
 
 追加後は再ログインするか、以下で LaunchAgent を再読込してください:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.mlx-audio-transcriptor.watcher
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mlx-audio-transcriptor.watcher.plist
+launchctl bootout gui/$(id -u)/com.audio-transcriptor.watcher
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.audio-transcriptor.watcher.plist
 ```
 
 ---
@@ -130,14 +130,14 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mlx-audio-transcript
 
 ```bash
 # 1. 登録できているか
-launchctl list | grep mlx-audio-transcriptor
+launchctl list | grep audio-transcriptor
 
 # 2. 手動で CLI を走らせて単体で動くか
-cd /path/to/mlx-audio-transcriptor
+cd /path/to/audio-transcriptor
 .venv/bin/python -m app.cli scan
 
 # 3. stderr ログに例外が出ていないか
-tail -n 200 ~/Library/Logs/mlx-audio-transcriptor/stderr.log
+tail -n 200 ~/Library/Logs/audio-transcriptor/stderr.log
 ```
 
 **`watch_dir` を変えたのに反映されない**

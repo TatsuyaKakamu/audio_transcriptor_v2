@@ -10,14 +10,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VENV_PYTHON="${PROJECT_ROOT}/.venv/bin/python"
-TEMPLATE="${SCRIPT_DIR}/com.mlx-audio-transcriptor.watcher.plist.template"
+TEMPLATE="${SCRIPT_DIR}/com.audio-transcriptor.watcher.plist.template"
 
-LABEL="com.mlx-audio-transcriptor.watcher"
+LABEL="com.audio-transcriptor.watcher"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 
-CONFIG_DIR="${HOME}/.config/mlx-audio-transcriptor"
+CONFIG_DIR="${HOME}/.config/audio-transcriptor"
 CONFIG_PATH="${CONFIG_DIR}/config.toml"
-LOG_DIR="${HOME}/Library/Logs/mlx-audio-transcriptor"
+LOG_DIR="${HOME}/Library/Logs/audio-transcriptor"
 
 if [[ ! -x "${VENV_PYTHON}" ]]; then
     echo "error: ${VENV_PYTHON} not found or not executable." >&2
