@@ -159,7 +159,7 @@ struct GeneratedMinutes {
 
 @available(macOS 26.0, *)
 func generate(_ transcript: Transcript, language: String) async throws -> MinutesOut {
-    let session = LanguageModelSession(instructions: systemInstructions)
+    let session = LanguageModelSession { systemInstructions }
     let prompt = buildPrompt(transcript, language: language)
     let response = try await session.respond(to: prompt, generating: GeneratedMinutes.self)
     let g = response.content
