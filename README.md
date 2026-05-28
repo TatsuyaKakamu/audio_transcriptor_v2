@@ -18,10 +18,12 @@ macOS 上で音声ファイルを文字起こしし、議事録 Markdown を自�
 | OS | macOS。Apple のオンデバイス機能（SpeechAnalyzer / Foundation Models）を使う場合は **macOS 26 以降** |
 | チップ | Apple Silicon（mlx-whisper を使う場合は必須） |
 | Python | 3.11 以上 |
+| Swift ツールチェイン | Apple helper の自動ビルドに必要（**Xcode** または **Command Line Tools**）。`xcode-select --install` で導入できる。macOS 26 以降かつ `swift` が利用可能なら、初回実行時に自動ビルドされる |
+| ffmpeg | mlx-whisper 経路で音声デコードに使用（`.mp3` 等。`brew install ffmpeg`） |
 
 - 通常は `mode = "auto"` で、環境に応じて最適な処理方式を自動選択する。
-- **Apple SpeechAnalyzer / Foundation Models は macOS 26 以降**で利用できる（要 Swift helper ビルド）。
-- macOS 26 未満や Apple 機能が使えない環境では、自動的に mlx-whisper / Ollama にフォールバックする（[レガシー動作モード](#レガシー動作モードmlx-whisper--ollama)）。
+- **Apple SpeechAnalyzer / Foundation Models は macOS 26 以降**で利用できる。Swift helper は**初回実行時に自動ビルド**される（`swift build` を手動で叩く必要はない。詳細は [Apple helper（自動ビルド）](#apple-helper自動ビルド--macos-26-以降)）。
+- 上記が満たせない環境（macOS 26 未満 / Swift 無し / ビルド失敗 など）では、自動的に mlx-whisper / Ollama にフォールバックする（[レガシー動作モード](#レガシー動作モードmlx-whisper--ollama)）。
 
 ## インストール
 
