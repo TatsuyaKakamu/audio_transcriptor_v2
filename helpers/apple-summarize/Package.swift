@@ -6,6 +6,9 @@ let package = Package(
     platforms: [
         .macOS(.v15)
     ],
+    products: [
+        .executable(name: "apple-summarize", targets: ["AppleSummarize"])
+    ],
     targets: [
         .executableTarget(
             name: "AppleSummarize",

@@ -6,6 +6,9 @@ let package = Package(
     platforms: [
         .macOS(.v15)
     ],
+    products: [
+        .executable(name: "apple-transcribe", targets: ["AppleTranscribe"])
+    ],
     targets: [
         .executableTarget(
             name: "AppleTranscribe",
