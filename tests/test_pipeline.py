@@ -74,7 +74,6 @@ def test_pipeline_transcript_only_when_no_summary(tmp_path, monkeypatch) -> None
     assert result.minutes is None
     assert result.summary_backend == "none"
     assert result.transcript_md_path.exists()
-    assert result.transcript_json_path.exists()
     assert result.minutes_md_path is None
 
 
@@ -104,7 +103,6 @@ def test_pipeline_apple_success(tmp_path, make_fake_helper) -> None:
     assert result.minutes is not None
     assert result.summary_backend == "apple_foundation"
     assert result.minutes_md_path.exists()
-    assert result.minutes_json_path.exists()
     assert not result.fallback_occurred
 
 

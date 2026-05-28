@@ -56,8 +56,8 @@ python -m app.cli capabilities
 python -m app.cli transcribe path/to/meeting.m4a
 ```
 
-出力は音声ファイルと同じフォルダに `*.transcript.md` / `*.transcript.json` /
-`*.minutes.md` / `*.minutes.json` として保存される。
+出力は音声ファイルと同じフォルダに `*.transcript.md`（文字起こし）と
+`*.minutes.md`（議事録）として保存される。
 
 ### 自動選択の優先順位
 
@@ -74,7 +74,7 @@ python -m app.cli transcribe path/to/meeting.m4a
 | `apple_native` | Apple Speech + Apple Foundation を要求。失敗時は停止 |
 | `legacy` | mlx-whisper + Ollama を優先 |
 
-`auto` モードでは実行時の失敗も自動でフォールバックする（例: Apple Foundation が失敗したら Ollama → API → なし）。
+`auto` モードでは実行時の失敗も自動でフォールバックする（例: Apple Foundation が失敗したら Ollama → なし）。
 
 ### Apple helper（自動ビルド / macOS 26 以降）
 
@@ -104,10 +104,12 @@ GUI アプリ、Downloads 自動監視、Ollama 議事録生成、自動 PR な�
 
 ## 対応ファイル
 
-| 拡張子 | 備考 |
-|--------|------|
-| `.wav` / `.mp3` | レガシー（mlx-whisper）/ auto 共通 |
-| `.m4a` / `.aac` / `.flac` / `.ogg` / `.aiff` / `.caf` | Apple SpeechAnalyzer 経由（auto モード） |
+受け付ける拡張子（大文字小文字不問）: `.wav` `.mp3` `.m4a` `.aac` `.flac` `.ogg` `.aiff` `.caf`
+
+| 経路 | デコード可否 |
+|------|------|
+| Apple SpeechAnalyzer | macOS（AVFoundation）が対応する形式 |
+| mlx-whisper | `ffmpeg` がデコードできる形式（要 ffmpeg） |
 
 ## テスト
 
@@ -125,8 +127,8 @@ mlx-audio-transcriptor/
 │   ├── config/            # TOML 設定（schema.py / loader.py、legacy + v2 共用）
 │   ├── core/              # v2: models / capabilities / pipeline / errors / helper
 │   ├── transcription/     # v2: TranscriptionBackend（apple_speech / mlx_whisper）
-│   ├── summary/           # v2: SummaryBackend（apple_foundation / ollama / api / none）
-│   ├── io/                # v2: Markdown / JSON writers
+│   ├── summary/           # v2: SummaryBackend（apple_foundation / ollama / none）
+│   ├── io/                # v2: Markdown writers / 音声拡張子
 │   ├── ui/                # PySide6 ウィジェット（レガシー GUI）
 │   ├── services/          # レガシーロジック層（transcriber / vad / minutes / auto_pr ほか）
 │   ├── workers/           # QThread ワーカー

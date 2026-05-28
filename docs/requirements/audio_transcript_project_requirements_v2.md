@@ -1,5 +1,12 @@
 # 実装仕様書: SummaryBackend / Apple Foundation Models Helper / TranscriptionBackend 抽象化
 
+> **実装メモ（本仕様からの差分）**
+> 以下は本仕様を実装する過程でユーザー判断により変更した点。本文は当初仕様のまま残してある。
+> - 外部 API 要約バックエンド（`api` / `ApiSummaryBackend` / `[summary.api]` / `api_key_available`）は**未実装**。要約の自動選択順は `apple_foundation → ollama → none`。
+> - パイプラインの成果物は **Markdown のみ**（`*.transcript.md` / `*.minutes.md`）。本文 §10 にある JSON サイドカー（`*.transcript.json` / `*.minutes.json`）は出力しない。中間表現の JSON 変換関数は Swift helper との受け渡しにのみ使用。
+> - Swift helper は**初回実行時に自動ビルド**される（macOS 26+ かつ `swift` 利用可能時）。
+> - GUI / CLI の両経路を v2 パイプライン（`build_pipeline` → `Pipeline.run`）に配線済み。
+
 ## 0. 目的
 
 このリポジトリでは、音声文字起こしアプリを **軽量・自動選択・macOSネイティブ優先** の設計にする。

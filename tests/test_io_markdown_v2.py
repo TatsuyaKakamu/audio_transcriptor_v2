@@ -67,17 +67,15 @@ def test_minutes_markdown_schema(tmp_path) -> None:
     assert "原文書き起こし: [meeting.transcript.md](meeting.transcript.md)" in md
 
 
-def test_writers_emit_all_four_artifacts(tmp_path) -> None:
+def test_writers_emit_markdown_only(tmp_path) -> None:
     writers = Writers()
     transcript = _transcript(tmp_path)
-    tj = writers.write_transcript_json(transcript)
     tm = writers.write_transcript_markdown(transcript)
-    mj = writers.write_minutes_json(_minutes())
     mm = writers.write_minutes_markdown(_minutes(), tm)
 
-    assert tj.name == "meeting.transcript.json"
     assert tm.name == "meeting.transcript.md"
-    assert mj.name == "meeting.minutes.json"
     assert mm.name == "meeting.minutes.md"
-    for p in (tj, tm, mj, mm):
+    for p in (tm, mm):
         assert p.exists() and p.read_text(encoding="utf-8")
+    # No JSON side-car files are produced.
+    assert not list(tmp_path.glob("*.json"))

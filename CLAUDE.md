@@ -28,13 +28,14 @@ detect_capabilities(Config) → Capabilities
 build_pipeline(Config, Capabilities)  ─  transcription/summary の order を決定し factory で構築
         ↓                                  （複数候補は Chained* backend に包んで実行時フォールバック）
 Pipeline.run(audio) → TranscriptionBackend.transcribe() → Transcript
-        ↓ writers.write_transcript_{json,md}
+        ↓ writers.write_transcript_markdown()
         ↓ SummaryBackend.summarize() → MeetingMinutes | None
-        ↓ writers.write_minutes_{json,md}
+        ↓ writers.write_minutes_markdown()
 PipelineResult
 ```
 
-- 中間表現は `app/core/models.py`（`Transcript`, `TranscriptSegment`, `MeetingMinutes`, `ActionItem`）。JSON 変換関数も同居。
+- 出力は Markdown のみ（`*.transcript.md` / `*.minutes.md`）。JSON サイドカーは出力しない。
+- 中間表現は `app/core/models.py`（`Transcript`, `TranscriptSegment`, `MeetingMinutes`, `ActionItem`）。dict 変換関数も同居（Swift helper との JSON 受け渡しに使用）。
 - 自動選択は `app/core/pipeline.py` の `choose_*` / `*_backend_order`。文字起こしは Apple Speech→mlx-whisper、要約は Apple Foundation→Ollama→none の順。`mode`（auto/apple_native/legacy）と `advanced.*_backend`（明示指定）で上書き。
 - 実行時フォールバックは `ChainedTranscriptionBackend` / `ChainedSummaryBackend`。要約が全滅したら `summarize()` は `None` を返し、Pipeline は transcript のみ出力する（auto モードの「none に落とす」挙動）。明示指定時は単一 backend なので失敗は例外で停止。
 - Apple 系 backend は `app/core/helper.py` 経由で Swift CLI（`helpers/apple-transcribe`, `helpers/apple-summarize`）を `subprocess` 実行し stdin/stdout JSON でやり取りする。`run_helper_check`（`--check`）/ `run_json_helper`。helper パスは `advanced.apple_*_path` で固定可能。
@@ -58,7 +59,7 @@ DropArea (DnD, 音声拡張子は io.audio.AUDIO_EXTENSIONS) → MainWindow → 
                                   ↓
                           Pipeline.run(audio) → TranscriptionBackend → SummaryBackend
                                   ↓
-                          Writers.write_transcript_{json,md} / write_minutes_{json,md}
+                          Writers.write_transcript_markdown / write_minutes_markdown
                                   ↓
                           経路（backend 名・fallback 有無）をログ出力
 ```
@@ -114,6 +115,6 @@ _transcribe_one()  →  transcribe → markdown_writer → [minutes.run_for] →
 
 `services/` 層は GUI なしで単体テスト可能。`tests/conftest.py` が `mlx_whisper` / `tqdm` のスタブを差し込むため macOS 以外でも動く。`minutes_generator.py` の autouse fixture `_block_real_http` が実 HTTP を遮断する。`auto_pr.py` は `subprocess.run` を `monkeypatch.setattr` で差し替えて検証する。
 
-`transcriber.py` と `vad.py` は `mlx-whisper` / `silero_vad` 依存のためテスト対象外。
+`transcriber.py` の mlx 呼び出しと `vad.py` の `silero_vad` 依存部分はテスト対象外（`vad.py` の純粋関数 `remap_timestamp` は `test_vad.py` でテスト）。
 
-テストファイル: `test_file_naming.py`, `test_markdown_writer.py`, `test_segment_merger.py`, `test_config.py`, `test_cli_scan.py`, `test_notifier.py`, `test_progress.py`, `test_minutes_generator.py`, `test_minutes_orchestrator.py`, `test_minutes_writer.py`, `test_auto_pr.py`
+レガシー層テストファイル: `test_file_naming.py`, `test_markdown_writer.py`, `test_segment_merger.py`, `test_config.py`, `test_cli_scan.py`, `test_notifier.py`, `test_progress.py`, `test_minutes_generator.py`, `test_minutes_orchestrator.py`, `test_minutes_writer.py`, `test_auto_pr.py`, `test_vad.py`。v2 抽象化レイヤのテストは上記「v2 バックエンド抽象化」節を参照。

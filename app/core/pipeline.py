@@ -141,9 +141,7 @@ class PipelineOptions:
 class PipelineResult:
     transcript: Transcript
     minutes: MeetingMinutes | None
-    transcript_json_path: Path | None = None
     transcript_md_path: Path | None = None
-    minutes_json_path: Path | None = None
     minutes_md_path: Path | None = None
     transcription_backend: str = ""
     summary_backend: str = ""
@@ -163,7 +161,6 @@ class Pipeline:
         start = time.monotonic()
 
         transcript = self.transcription_backend.transcribe(audio_path, options.transcription)
-        transcript_json_path = self.writers.write_transcript_json(transcript)
         transcript_md_path = self.writers.write_transcript_markdown(transcript)
         self.logger.info("Wrote transcript: %s", transcript_md_path)
 
@@ -173,7 +170,6 @@ class Pipeline:
             return PipelineResult(
                 transcript=transcript,
                 minutes=None,
-                transcript_json_path=transcript_json_path,
                 transcript_md_path=transcript_md_path,
                 transcription_backend=transcript.backend,
                 summary_backend="none",
@@ -188,7 +184,6 @@ class Pipeline:
             return PipelineResult(
                 transcript=transcript,
                 minutes=None,
-                transcript_json_path=transcript_json_path,
                 transcript_md_path=transcript_md_path,
                 transcription_backend=transcript.backend,
                 summary_backend="none",
@@ -196,16 +191,13 @@ class Pipeline:
                 elapsed_seconds=time.monotonic() - start,
             )
 
-        minutes_json_path = self.writers.write_minutes_json(minutes)
         minutes_md_path = self.writers.write_minutes_markdown(minutes, transcript_md_path)
         self.logger.info("Wrote minutes: %s", minutes_md_path)
 
         return PipelineResult(
             transcript=transcript,
             minutes=minutes,
-            transcript_json_path=transcript_json_path,
             transcript_md_path=transcript_md_path,
-            minutes_json_path=minutes_json_path,
             minutes_md_path=minutes_md_path,
             transcription_backend=transcript.backend,
             summary_backend=minutes.backend,

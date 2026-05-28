@@ -35,8 +35,8 @@ app/
   models/         # dataclass（Segment, TranscriptionResult）
   core/           # v2: models / capabilities / pipeline / errors / helper
   transcription/  # v2: TranscriptionBackend 抽象化（apple_speech / mlx_whisper）
-  summary/        # v2: SummaryBackend 抽象化（apple_foundation / ollama / api / none）
-  io/             # v2: Markdown / JSON writers
+  summary/        # v2: SummaryBackend 抽象化（apple_foundation / ollama / none）
+  io/             # v2: Markdown writers / 音声拡張子
 helpers/          # Swift helper CLI（apple-transcribe / apple-summarize）
 tests/            # pytest（services/ + core/transcription/summary/io 層）
 scripts/          # launchd watcher のインストール/アンインストール
