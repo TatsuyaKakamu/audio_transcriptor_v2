@@ -41,7 +41,6 @@ def _caps(**overrides) -> Capabilities:
         mlx_whisper_available=False,
         ollama_available=False,
         ffmpeg_available=False,
-        api_key_available=False,
     )
     base.update(overrides)
     return Capabilities(**base)

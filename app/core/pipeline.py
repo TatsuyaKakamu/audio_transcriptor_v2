@@ -48,10 +48,6 @@ def validate_requested_summary_backend(name: str, caps: Capabilities) -> str:
         if caps.ollama_available:
             return name
         raise BackendUnavailableError("ollama backend requested but Ollama unavailable")
-    if name == "api":
-        if caps.api_key_available:
-            return name
-        raise BackendUnavailableError("api backend requested but API key unavailable")
     if name == "none":
         return name
     raise ValueError(f"Unknown summary backend: {name}")
@@ -76,8 +72,6 @@ def choose_summary_backend(config: Config, caps: Capabilities) -> str:
         return "apple_foundation"
     if caps.ollama_available:
         return "ollama"
-    if caps.api_key_available:
-        return "api"
     return "none"
 
 
@@ -128,8 +122,6 @@ def summary_backend_order(config: Config, caps: Capabilities) -> list[str]:
         order.append("apple_foundation")
     if caps.ollama_available:
         order.append("ollama")
-    if caps.api_key_available:
-        order.append("api")
     order.append("none")
     return order
 
@@ -286,7 +278,6 @@ _DISPLAY_NAMES = {
     "mlx_whisper": "mlx-whisper",
     "apple_foundation": "Apple Foundation Models",
     "ollama": "Ollama",
-    "api": "External API",
     "none": "None (transcript only)",
 }
 

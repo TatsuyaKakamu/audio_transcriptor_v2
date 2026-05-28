@@ -25,7 +25,6 @@ def _caps(**overrides) -> Capabilities:
         mlx_whisper_available=False,
         ollama_available=False,
         ffmpeg_available=False,
-        api_key_available=False,
     )
     base.update(overrides)
     return Capabilities(**base)
@@ -76,18 +75,13 @@ def test_transcription_explicit_unavailable_raises() -> None:
 
 
 def test_summary_prefers_apple_foundation() -> None:
-    caps = _caps(apple_foundation_available=True, ollama_available=True, api_key_available=True)
+    caps = _caps(apple_foundation_available=True, ollama_available=True)
     assert choose_summary_backend(_config(), caps) == "apple_foundation"
 
 
 def test_summary_falls_to_ollama() -> None:
-    caps = _caps(ollama_available=True, api_key_available=True)
+    caps = _caps(ollama_available=True)
     assert choose_summary_backend(_config(), caps) == "ollama"
-
-
-def test_summary_falls_to_api() -> None:
-    caps = _caps(api_key_available=True)
-    assert choose_summary_backend(_config(), caps) == "api"
 
 
 def test_summary_falls_to_none() -> None:
@@ -108,11 +102,10 @@ def test_transcription_order_auto_lists_both() -> None:
 
 
 def test_summary_order_auto_lists_all_then_none() -> None:
-    caps = _caps(apple_foundation_available=True, ollama_available=True, api_key_available=True)
+    caps = _caps(apple_foundation_available=True, ollama_available=True)
     assert summary_backend_order(_config(), caps) == [
         "apple_foundation",
         "ollama",
-        "api",
         "none",
     ]
 

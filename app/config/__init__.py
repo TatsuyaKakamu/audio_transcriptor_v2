@@ -13,7 +13,6 @@ from app.config.loader import (
 )
 from app.config.schema import (
     AdvancedSection,
-    ApiSummaryConfig,
     AppConfig,
     AppSection,
     AutoPRConfig,
@@ -39,5 +38,4 @@ __all__ = [
     "TranscriptionSection",
     "SummarySection",
     "OllamaSummaryConfig",
-    "ApiSummaryConfig",
 ]

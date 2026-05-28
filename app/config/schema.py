@@ -105,21 +105,12 @@ class OllamaSummaryConfig:
 
 
 @dataclass(frozen=True)
-class ApiSummaryConfig:
-    provider: str = "openai"
-    model: str = "gpt-4.1-mini"
-    api_key_env: str = "OPENAI_API_KEY"
-    base_url: str = "https://api.openai.com/v1"
-
-
-@dataclass(frozen=True)
 class SummarySection:
     output_language: str = "ja"
     include_evidence: bool = True
     max_input_chars: int = 30000
     request_timeout_seconds: float = 600.0
     ollama: OllamaSummaryConfig = field(default_factory=OllamaSummaryConfig)
-    api: ApiSummaryConfig = field(default_factory=ApiSummaryConfig)
 
 
 @dataclass(frozen=True)

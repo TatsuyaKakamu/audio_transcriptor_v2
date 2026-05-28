@@ -16,7 +16,7 @@ output_directory = "same_as_audio"
 [advanced]
 # auto | apple_speech | mlx_whisper
 transcription_backend = "auto"
-# auto | apple_foundation | ollama | api | none
+# auto | apple_foundation | ollama | none
 summary_backend = "auto"
 # Optional: pin helper executables (otherwise resolved from PATH / repo build dir)
 # apple_transcribe_path = ""
@@ -36,9 +36,3 @@ request_timeout_seconds = 600
 host = "http://localhost:11434"
 model = "gemma4"
 num_ctx = 32768
-
-[summary.api]
-provider = "openai"
-model = "gpt-4.1-mini"
-api_key_env = "OPENAI_API_KEY"
-base_url = "https://api.openai.com/v1"

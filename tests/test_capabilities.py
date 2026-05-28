@@ -14,7 +14,6 @@ def _patch_all(monkeypatch, **overrides) -> None:
         detect_mlx_whisper=lambda: True,
         detect_ffmpeg=lambda: True,
         detect_ollama=lambda cfg: True,
-        detect_api_key=lambda cfg: True,
     )
     defaults.update(overrides)
     for name, fn in defaults.items():
@@ -30,7 +29,6 @@ def test_detect_capabilities_all_available(monkeypatch) -> None:
     assert caps.mlx_whisper_available
     assert caps.ollama_available
     assert caps.ffmpeg_available
-    assert caps.api_key_available
     assert caps.apple_silicon
     assert caps.macos_version == "26.0"
 
@@ -45,7 +43,6 @@ def test_detect_capabilities_nothing_available(monkeypatch) -> None:
         detect_mlx_whisper=lambda: False,
         detect_ffmpeg=lambda: False,
         detect_ollama=lambda cfg: False,
-        detect_api_key=lambda cfg: False,
     )
     caps = detect_capabilities(Config())
     assert not any(
@@ -55,18 +52,10 @@ def test_detect_capabilities_nothing_available(monkeypatch) -> None:
             caps.mlx_whisper_available,
             caps.ollama_available,
             caps.ffmpeg_available,
-            caps.api_key_available,
             caps.apple_silicon,
         ]
     )
     assert caps.macos_version is None
-
-
-def test_detect_api_key_reads_env(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert capabilities.detect_api_key(Config()) is False
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    assert capabilities.detect_api_key(Config()) is True
 
 
 def test_detect_apple_speech_uses_helper_path(monkeypatch, make_fake_helper) -> None:

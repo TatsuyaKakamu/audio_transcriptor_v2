@@ -185,7 +185,6 @@ def cmd_capabilities() -> int:
         f"  mlx-whisper:          {caps.mlx_whisper_available}\n"
         f"  Ollama:               {caps.ollama_available}\n"
         f"  ffmpeg:               {caps.ffmpeg_available}\n"
-        f"  API key:              {caps.api_key_available}\n"
     )
     try:
         _, selection = build_pipeline(cfg, caps)

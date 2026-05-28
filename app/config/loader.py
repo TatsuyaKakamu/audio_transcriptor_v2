@@ -9,7 +9,6 @@ from pathlib import Path
 from app.config.schema import (
     CONFIG_PATH,
     AdvancedSection,
-    ApiSummaryConfig,
     AppConfig,
     AppSection,
     AutoPRConfig,
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 _MODES = frozenset({"auto", "apple_native", "legacy"})
 _TRANSCRIPTION_BACKENDS = frozenset({"auto", "apple_speech", "mlx_whisper"})
-_SUMMARY_BACKENDS = frozenset({"auto", "apple_foundation", "ollama", "api", "none"})
+_SUMMARY_BACKENDS = frozenset({"auto", "apple_foundation", "ollama", "none"})
 
 
 def _read_toml(path: Path) -> dict | None:
@@ -186,9 +185,7 @@ def _parse_transcription(data: dict) -> TranscriptionSection:
 def _parse_summary(data: dict) -> SummarySection:
     d = SummarySection()
     ollama_raw = data.get("ollama") if isinstance(data.get("ollama"), dict) else {}
-    api_raw = data.get("api") if isinstance(data.get("api"), dict) else {}
     od = OllamaSummaryConfig()
-    ad = ApiSummaryConfig()
     return SummarySection(
         output_language=str(data.get("output_language", d.output_language)),
         include_evidence=bool(data.get("include_evidence", d.include_evidence)),
@@ -200,12 +197,6 @@ def _parse_summary(data: dict) -> SummarySection:
             host=str(ollama_raw.get("host", od.host)),
             model=str(ollama_raw.get("model", od.model)),
             num_ctx=int(ollama_raw.get("num_ctx", od.num_ctx)),
-        ),
-        api=ApiSummaryConfig(
-            provider=str(api_raw.get("provider", ad.provider)),
-            model=str(api_raw.get("model", ad.model)),
-            api_key_env=str(api_raw.get("api_key_env", ad.api_key_env)),
-            base_url=str(api_raw.get("base_url", ad.base_url)),
         ),
     )
 

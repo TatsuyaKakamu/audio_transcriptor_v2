@@ -5,12 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from app.config import AdvancedSection, ApiSummaryConfig, Config, SummarySection
+from app.config import AdvancedSection, Config
 from app.core.errors import SummaryFailedError
 from app.core.models import MeetingMinutes, Transcript, TranscriptSegment
-from app.summary import api as api_mod
 from app.summary import ollama as ollama_mod
-from app.summary.api import ApiSummaryBackend
 from app.summary.apple_foundation import AppleFoundationSummaryBackend
 from app.summary.base import SummaryOptions
 from app.summary.none import NoneSummaryBackend
@@ -67,28 +65,6 @@ def test_ollama_backend_failure_raises(monkeypatch) -> None:
     monkeypatch.setattr(ollama_mod, "_http_post_json", boom)
     with pytest.raises(SummaryFailedError):
         OllamaSummaryBackend(Config()).summarize(_transcript(), _options())
-
-
-def test_api_backend_returns_minutes(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(
-        api_mod,
-        "_http_post_json",
-        lambda url, payload, headers, timeout: {
-            "choices": [{"message": {"content": json.dumps(_MINUTES_PAYLOAD)}}]
-        },
-    )
-    minutes = ApiSummaryBackend(Config()).summarize(_transcript(), _options())
-    assert isinstance(minutes, MeetingMinutes)
-    assert minutes.backend == "api"
-
-
-def test_api_backend_unavailable_without_key(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    backend = ApiSummaryBackend(Config())
-    assert backend.is_available() is False
-    with pytest.raises(SummaryFailedError):
-        backend.summarize(_transcript(), _options())
 
 
 def test_apple_foundation_backend_returns_minutes(make_fake_helper) -> None:

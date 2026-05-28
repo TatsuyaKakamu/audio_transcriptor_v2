@@ -7,7 +7,6 @@ import logging
 from app.config import Config
 from app.core.errors import SummaryFailedError
 from app.core.models import MeetingMinutes, Transcript
-from app.summary.api import ApiSummaryBackend
 from app.summary.apple_foundation import AppleFoundationSummaryBackend
 from app.summary.base import SummaryBackend, SummaryOptions
 from app.summary.none import NoneSummaryBackend
@@ -21,8 +20,6 @@ def create_summary_backend(name: str, config: Config) -> SummaryBackend:
         return AppleFoundationSummaryBackend(config)
     if name == "ollama":
         return OllamaSummaryBackend(config)
-    if name == "api":
-        return ApiSummaryBackend(config)
     if name == "none":
         return NoneSummaryBackend()
     raise ValueError(f"Unknown summary backend: {name}")

@@ -9,7 +9,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-import os
 import platform
 import shutil
 import subprocess
@@ -32,7 +31,6 @@ class Capabilities:
     mlx_whisper_available: bool
     ollama_available: bool
     ffmpeg_available: bool
-    api_key_available: bool
 
 
 def detect_macos_version() -> str | None:
@@ -81,11 +79,6 @@ def detect_ollama(config: Config) -> bool:
         return False
 
 
-def detect_api_key(config: Config) -> bool:
-    env_name = config.summary.api.api_key_env
-    return bool(env_name) and bool(os.environ.get(env_name))
-
-
 def detect_capabilities(config: Config | None = None) -> Capabilities:
     config = config or Config()
     caps = Capabilities(
@@ -96,16 +89,13 @@ def detect_capabilities(config: Config | None = None) -> Capabilities:
         mlx_whisper_available=detect_mlx_whisper(),
         ollama_available=detect_ollama(config),
         ffmpeg_available=detect_ffmpeg(),
-        api_key_available=detect_api_key(config),
     )
     logger.info(
-        "Capabilities: apple_speech=%s apple_foundation=%s mlx_whisper=%s ollama=%s "
-        "ffmpeg=%s api_key=%s",
+        "Capabilities: apple_speech=%s apple_foundation=%s mlx_whisper=%s ollama=%s ffmpeg=%s",
         caps.apple_speech_available,
         caps.apple_foundation_available,
         caps.mlx_whisper_available,
         caps.ollama_available,
         caps.ffmpeg_available,
-        caps.api_key_available,
     )
     return caps

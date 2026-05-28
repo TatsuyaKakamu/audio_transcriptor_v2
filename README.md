@@ -62,7 +62,7 @@ python -m app.cli transcribe path/to/meeting.m4a
 | 処理 | 優先順位 |
 |---|---|
 | 文字起こし | Apple SpeechAnalyzer → mlx-whisper（+ ffmpeg） |
-| 議事録生成 | Apple Foundation Models → Ollama → 外部 API → なし |
+| 議事録生成 | Apple Foundation Models → Ollama → なし |
 
 `mode` で全体方針を切り替えられる。
 
