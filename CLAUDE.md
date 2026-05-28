@@ -45,23 +45,26 @@ PipelineResult
 
 ### データフロー（GUI）
 
+`TranscriptionWorker` は v2 パイプライン経由（`build_pipeline` → `Pipeline.run`）で動作する。
+選択された経路と実際に通った経路（`result.transcription_backend` / `summary_backend` /
+`fallback_occurred`）はログペインに出力する。レガシーの `[minutes].enabled = false` は
+v2 の `advanced.summary_backend = "none"` に変換して尊重する。
+
 ```
-DropArea (DnD) → MainWindow → TranscriptionWorker (QThread)
+DropArea (DnD, 音声拡張子は io.audio.AUDIO_EXTENSIONS) → MainWindow → TranscriptionWorker (QThread)
+                                  ↓  load_full_config() + UI の言語/モデルで上書き
+                          build_pipeline(Config, Capabilities)  →  describe_selection() をログ出力
                                   ↓
-                          transcriber.transcribe()
-                                  ↓ (VAD前処理)
-                          vad.preprocess_with_vad()  →  silero_vad で無音区間除去
+                          Pipeline.run(audio) → TranscriptionBackend → SummaryBackend
                                   ↓
-                          mlx_whisper.transcribe()
+                          Writers.write_transcript_{json,md} / write_minutes_{json,md}
                                   ↓
-                          normalize_segments()  →  VADタイムラインを元タイムラインに再マッピング
-                                  ↓
-                          file_naming.resolve_output_path()
-                                  ↓
-                          markdown_writer.write()
-                                  ↓ ([minutes].enabled なら)
-                          minutes.run_for()  →  minutes_generator → Ollama → minutes_writer
+                          経路（backend 名・fallback 有無）をログ出力
 ```
+
+> 進捗はファイル単位（Apple helper 経路はフレーム単位の進捗を返さないため）。
+> 旧 mlx 固定フロー（`vad.preprocess_with_vad` → `mlx_whisper.transcribe` → `normalize_segments`）は
+> `mlx_whisper` backend 内部に内包される。
 
 ### データフロー（CLI / launchd）
 
