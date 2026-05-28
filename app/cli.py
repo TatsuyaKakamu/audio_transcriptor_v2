@@ -168,10 +168,87 @@ def cmd_scan(cfg: AppConfig | None = None, lock_path: Path | None = None) -> int
         return _process_pending(cfg)
 
 
+def cmd_capabilities() -> int:
+    """Detect environment capabilities and print the auto-selected backends."""
+    from app.config import load_full_config
+    from app.core.capabilities import detect_capabilities
+    from app.core.pipeline import build_pipeline, describe_selection
+
+    cfg = load_full_config()
+    caps = detect_capabilities(cfg)
+    print(
+        "Capabilities:\n"
+        f"  macOS version:        {caps.macos_version or 'n/a'}\n"
+        f"  Apple Silicon:        {caps.apple_silicon}\n"
+        f"  Apple Speech:         {caps.apple_speech_available}\n"
+        f"  Apple Foundation:     {caps.apple_foundation_available}\n"
+        f"  mlx-whisper:          {caps.mlx_whisper_available}\n"
+        f"  Ollama:               {caps.ollama_available}\n"
+        f"  ffmpeg:               {caps.ffmpeg_available}\n"
+    )
+    try:
+        _, selection = build_pipeline(cfg, caps)
+        print(describe_selection(cfg, selection))
+    except Exception as e:  # noqa: BLE001 — informational command
+        print(f"No usable pipeline for this environment: {e}")
+        return 1
+    return 0
+
+
+def cmd_transcribe(paths: list[str]) -> int:
+    """Run the auto-selected pipeline over one or more audio files."""
+    from app.config import load_full_config
+    from app.core.pipeline import PipelineOptions, build_pipeline, describe_selection
+    from app.summary.base import SummaryOptions
+    from app.transcription.base import TranscriptionOptions
+
+    cfg = load_full_config()
+    try:
+        pipeline, selection = build_pipeline(cfg)
+    except Exception as e:  # noqa: BLE001
+        logger.error("could not build pipeline: %s", e)
+        return 1
+    print(describe_selection(cfg, selection))
+
+    options = PipelineOptions(
+        transcription=TranscriptionOptions(
+            language=cfg.app.language,
+            model=cfg.transcription.model,
+            vad_enabled=cfg.transcription.vad_enabled,
+        ),
+        summary=SummaryOptions(
+            language=cfg.summary.output_language,
+            max_input_chars=cfg.summary.max_input_chars,
+            include_evidence=cfg.summary.include_evidence,
+            timeout_seconds=cfg.summary.request_timeout_seconds,
+        ),
+    )
+
+    errors = 0
+    for raw in paths:
+        path = Path(raw).expanduser()
+        try:
+            result = pipeline.run(path, options)
+            logger.info(
+                "done %s: transcript=%s minutes=%s elapsed=%.1fs",
+                path.name,
+                result.transcript_md_path,
+                result.minutes_md_path,
+                result.elapsed_seconds,
+            )
+        except Exception as e:  # noqa: BLE001
+            errors += 1
+            logger.error("failed to process %s: %s", path, e, exc_info=True)
+    return 1 if errors else 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="app.cli", description="mlx-audio-transcriptor headless CLI")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("scan", help="scan watch_dir for pending audio files and transcribe them")
+    sub.add_parser("capabilities", help="show detected backends and the auto selection")
+    tr = sub.add_parser("transcribe", help="transcribe + summarize specific audio files")
+    tr.add_argument("paths", nargs="+", help="audio file paths to process")
     return p
 
 
@@ -196,6 +273,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "scan":
         return cmd_scan()
+    if args.command == "capabilities":
+        return cmd_capabilities()
+    if args.command == "transcribe":
+        return cmd_transcribe(args.paths)
     return 2
 
 

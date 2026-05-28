@@ -3,10 +3,11 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-import mlx_whisper
-import tqdm as _tqdm_module
-
 from app.models.types import Segment, TranscriptionResult
+
+# mlx_whisper and tqdm are heavy, Apple-Silicon-only dependencies; import them
+# lazily inside transcribe() so this module stays importable elsewhere
+# (e.g. the headless CLI on a machine without them installed).
 
 _MODEL_REPO_MAP: dict[str, str] = {
     "tiny": "mlx-community/whisper-tiny-mlx",
@@ -20,8 +21,8 @@ _MODEL_REPO_MAP: dict[str, str] = {
 _DEVNULL = open(os.devnull, "w")
 
 
-def _make_progress_tqdm(callback: Callable[[int, int, float], None], start: float):
-    base = _tqdm_module.tqdm
+def _make_progress_tqdm(tqdm_module, callback: Callable[[int, int, float], None], start: float):
+    base = tqdm_module.tqdm
 
     class _ProgressTqdm(base):
         def __init__(self, *args, **kwargs):
@@ -44,6 +45,9 @@ def transcribe(
     progress_callback: Callable[[int, int, float], None] | None = None,
     use_vad: bool = True,
 ) -> TranscriptionResult:
+    import mlx_whisper
+    import tqdm as tqdm_module
+
     repo = _MODEL_REPO_MAP.get(model, f"mlx-community/whisper-{model}-mlx")
 
     audio_input: str | object = str(source_path)
@@ -57,10 +61,10 @@ def transcribe(
             audio_input = str(source_path)
             kept_intervals = None
 
-    original_tqdm_cls = _tqdm_module.tqdm
+    original_tqdm_cls = tqdm_module.tqdm
     if progress_callback is not None:
         start = time.monotonic()
-        _tqdm_module.tqdm = _make_progress_tqdm(progress_callback, start)
+        tqdm_module.tqdm = _make_progress_tqdm(tqdm_module, progress_callback, start)
 
     try:
         result = mlx_whisper.transcribe(
@@ -73,7 +77,7 @@ def transcribe(
         )
     finally:
         if progress_callback is not None:
-            _tqdm_module.tqdm = original_tqdm_cls
+            tqdm_module.tqdm = original_tqdm_cls
 
     segments = normalize_segments(result, kept_intervals)
     from app.services.segment_merger import merge_by_conversation

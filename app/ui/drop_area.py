@@ -4,7 +4,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QLabel
 
-SUPPORTED_EXTENSIONS = frozenset({".wav", ".mp3"})
+from app.io.audio import AUDIO_EXTENSIONS
+
+SUPPORTED_EXTENSIONS = AUDIO_EXTENSIONS
 
 
 class DropArea(QLabel):
@@ -14,7 +16,7 @@ class DropArea(QLabel):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setAlignment(Qt.AlignCenter)
-        self.setText("ここに wav / mp3 ファイルをドラッグ&ドロップ\n複数ファイル対応")
+        self.setText("ここに音声ファイル (wav / mp3 / m4a など) をドラッグ&ドロップ\n複数ファイル対応")
         self.setStyleSheet("""
             QLabel {
                 border: 2px dashed #aaaaaa;
