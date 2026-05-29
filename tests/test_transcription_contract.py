@@ -45,6 +45,35 @@ def test_apple_speech_backend_returns_transcript(make_fake_helper) -> None:
     assert transcript.segments[0].text == "おはようございます。"
 
 
+def test_apple_speech_backend_merges_fragmented_segments(make_fake_helper) -> None:
+    payload = {
+        "source_audio_path": "/tmp/meeting.wav",
+        "language": "ja-JP",
+        "backend": "apple_speech",
+        # Recognizer fragments that split mid-sentence (no large gaps).
+        "segments": [
+            {"start_seconds": 0.0, "end_seconds": 1.0, "text": "本日の"},
+            {"start_seconds": 1.0, "end_seconds": 2.0, "text": "議題は"},
+            {"start_seconds": 2.0, "end_seconds": 3.0, "text": "予算です。"},
+        ],
+        "raw_text": "本日の\n議題は\n予算です。",
+        "metadata": {},
+    }
+    helper = make_fake_helper(
+        "apple-transcribe",
+        check={"ok": True, "backend": "apple_speech", "version": "0.1.0"},
+        main={"ok": True, "transcript": payload},
+    )
+    cfg = Config(advanced=AdvancedSection(apple_transcribe_path=str(helper)))
+    transcript = AppleSpeechTranscriptionBackend(cfg).transcribe(
+        Path("/tmp/meeting.wav"), _options()
+    )
+    assert len(transcript.segments) == 1
+    assert transcript.segments[0].text == "本日の議題は予算です。"
+    assert transcript.segments[0].start_seconds == 0.0
+    assert transcript.segments[0].end_seconds == 3.0
+
+
 def test_apple_speech_backend_helper_error_raises(make_fake_helper) -> None:
     helper = make_fake_helper(
         "apple-transcribe",

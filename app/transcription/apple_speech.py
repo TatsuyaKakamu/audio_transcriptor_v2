@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from app.config import Config
 from app.core.errors import HelperProtocolError, TranscriptionFailedError
 from app.core.helper import run_helper_check, run_json_helper
 from app.core.models import Transcript, transcript_from_dict
+from app.core.segments import merge_segments_by_sentence
 from app.transcription.base import TranscriptionBackend, TranscriptionOptions
 
 _HELPER = "apple-transcribe"
@@ -45,4 +47,8 @@ class AppleSpeechTranscriptionBackend(TranscriptionBackend):
         transcript = transcript_from_dict(payload)
         if not transcript.backend:
             transcript = transcript_from_dict({**payload, "backend": self.name})
-        return transcript
+        # SpeechTranscriber finalizes results mid-sentence; re-merge the raw
+        # fragments into sentence-aligned blocks so the transcript breaks at
+        # punctuation rather than at arbitrary recognizer boundaries.
+        merged = merge_segments_by_sentence(transcript.segments, language=options.language)
+        return replace(transcript, segments=merged)
