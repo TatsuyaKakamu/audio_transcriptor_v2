@@ -58,6 +58,36 @@ def test_comma_split_still_capped_by_max_block() -> None:
     assert [s.text for s in merged] == ["とても長い前置きがあって、", "続きます。"]
 
 
+def test_japanese_ascii_dot_does_not_break_line() -> None:
+    # An ASCII "." inside Japanese text (decimal, abbreviation, URL) must not be
+    # treated as a sentence end; only 。！？ break the line.
+    segments = [
+        _seg(0.0, 1.0, "バージョンは3."),
+        _seg(1.0, 2.0, "5です。"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["バージョンは3.5です。"]
+
+
+def test_japanese_breaks_only_on_full_width_sentence_end() -> None:
+    segments = [
+        _seg(0.0, 1.0, "おはよう。"),
+        _seg(1.0, 2.0, "元気ですか？"),
+        _seg(2.0, 3.0, "すごい！"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["おはよう。", "元気ですか？", "すごい！"]
+
+
+def test_english_dot_still_breaks_line() -> None:
+    segments = [
+        _seg(0.0, 1.0, "Hello."),
+        _seg(1.0, 2.0, "World."),
+    ]
+    merged = merge_segments_by_sentence(segments, language="en-US")
+    assert [s.text for s in merged] == ["Hello.", "World."]
+
+
 def test_english_joins_with_space() -> None:
     segments = [
         _seg(0.0, 1.0, "Good"),

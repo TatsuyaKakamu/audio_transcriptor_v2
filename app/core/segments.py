@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from app.core.models import TranscriptSegment
 
-# Sentence-final punctuation that marks a natural block boundary. Kept identical
-# to the legacy merger so both pipelines split text the same way.
-_SENTENCE_END = frozenset("。！？.!?")
+# Sentence-final punctuation that marks a natural block boundary, by script.
+# CJK text omits the ASCII period "." because there it is almost always a
+# decimal point, abbreviation, or URL ("3.5", "U.S.", "example.com") rather than
+# a sentence end. Latin text keeps "." but also accepts full-width marks.
+_SENTENCE_END_CJK = frozenset("。！？!?")
+_SENTENCE_END_LATIN = frozenset(".!?。！？")
 
 # Mid-clause punctuation. A fragment ending here is clearly unfinished, so we
 # keep accumulating across a pause instead of breaking the line at a comma.
@@ -25,9 +28,17 @@ _CONTINUATION = frozenset("、，,；;：:")
 _NO_SPACE_PREFIXES = ("ja", "zh", "yue")
 
 
-def _joiner_for(language: str) -> str:
+def _is_no_space_language(language: str) -> bool:
     lang = language.lower().replace("_", "-")
-    return "" if any(lang == p or lang.startswith(p + "-") for p in _NO_SPACE_PREFIXES) else " "
+    return any(lang == p or lang.startswith(p + "-") for p in _NO_SPACE_PREFIXES)
+
+
+def _joiner_for(language: str) -> str:
+    return "" if _is_no_space_language(language) else " "
+
+
+def _sentence_end_for(language: str) -> frozenset:
+    return _SENTENCE_END_CJK if _is_no_space_language(language) else _SENTENCE_END_LATIN
 
 
 def merge_segments_by_sentence(
@@ -63,6 +74,7 @@ def merge_segments_by_sentence(
         return []
 
     joiner = _joiner_for(language)
+    sentence_end = _sentence_end_for(language)
     result: list[TranscriptSegment] = []
     block_start = stripped[0].start_seconds
     block_end = stripped[0].end_seconds
@@ -73,7 +85,7 @@ def merge_segments_by_sentence(
         block_len = curr.end_seconds - block_start
         gap = curr.start_seconds - prev.end_seconds
         last_char = prev.text[-1]
-        ends_sentence = last_char in _SENTENCE_END
+        ends_sentence = last_char in sentence_end
         mid_clause = last_char in _CONTINUATION
         speaker_changed = curr.speaker != block_speaker
         # A pause at a comma is just a breath, not a sentence boundary — don't
