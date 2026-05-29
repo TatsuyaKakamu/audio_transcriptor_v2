@@ -11,7 +11,7 @@ from pathlib import Path
 
 from app.core.errors import NoTranscriptionBackendError
 from app.core.models import Transcript
-from app.transcription.base import TranscriptionBackend, TranscriptionOptions
+from app.transcription.base import ProgressCallback, TranscriptionBackend, TranscriptionOptions
 
 
 class NoneTranscriptionBackend(TranscriptionBackend):
@@ -20,5 +20,10 @@ class NoneTranscriptionBackend(TranscriptionBackend):
     def is_available(self) -> bool:
         return False
 
-    def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> Transcript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions,
+        progress_callback: ProgressCallback | None = None,
+    ) -> Transcript:
         raise NoTranscriptionBackendError("no transcription backend is available")

@@ -77,6 +77,29 @@ def test_pipeline_transcript_only_when_no_summary(tmp_path, monkeypatch) -> None
     assert result.minutes_md_path is None
 
 
+def test_pipeline_run_forwards_progress_callback(tmp_path, monkeypatch) -> None:
+    from app.services import transcriber
+
+    def fake_transcribe(source_path, model, language, progress_callback=None, use_vad=True):
+        if progress_callback is not None:
+            progress_callback(1, 2, 0.0)  # 50%
+            progress_callback(2, 2, 0.0)  # 100%
+        return TranscriptionResult(
+            source_path=source_path,
+            language=language,
+            model=model,
+            segments=[Segment(0.0, 2.0, "テスト。")],
+        )
+
+    monkeypatch.setattr(transcriber, "transcribe", fake_transcribe)
+    caps = _caps(mlx_whisper_available=True, ffmpeg_available=True)
+    pipeline, _ = build_pipeline(_config(tmp_path), caps)
+
+    fractions: list[float] = []
+    pipeline.run(tmp_path / "meeting.wav", progress_callback=fractions.append)
+    assert fractions == [0.5, 1.0]
+
+
 def test_pipeline_apple_success(tmp_path, make_fake_helper) -> None:
     transcribe_helper = make_fake_helper(
         "apple-transcribe",
