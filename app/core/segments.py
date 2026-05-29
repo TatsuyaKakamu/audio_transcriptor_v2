@@ -16,6 +16,10 @@ from app.core.models import TranscriptSegment
 # to the legacy merger so both pipelines split text the same way.
 _SENTENCE_END = frozenset("。！？.!?")
 
+# Mid-clause punctuation. A fragment ending here is clearly unfinished, so we
+# keep accumulating across a pause instead of breaking the line at a comma.
+_CONTINUATION = frozenset("、，,；;：:")
+
 # Languages that do not separate words with spaces; their segments are joined
 # with no separator. Matched as a BCP-47 prefix (e.g. "ja-JP" → "ja").
 _NO_SPACE_PREFIXES = ("ja", "zh", "yue")
@@ -36,11 +40,13 @@ def merge_segments_by_sentence(
     """Merge fragmented segments into sentence-aligned blocks.
 
     A block is flushed (and a new one started) when the previous segment ends
-    with sentence-final punctuation, when the silent gap to the next segment is
-    at least ``silence_gap_sec``, when the block would grow longer than
-    ``max_block_sec``, or when the speaker changes. Timestamps span the merged
-    fragments; per-fragment ``confidence`` is dropped since it no longer applies
-    to the combined text.
+    with sentence-final punctuation, when the speaker changes, when the block
+    would grow longer than ``max_block_sec``, or when the silent gap to the next
+    segment is at least ``silence_gap_sec`` *and* the previous fragment does not
+    end mid-clause (e.g. on a "、" comma). Keeping commas from triggering a gap
+    split avoids breaking a line in the middle of a sentence. Timestamps span
+    the merged fragments; per-fragment ``confidence`` is dropped since it no
+    longer applies to the combined text.
     """
     stripped = [
         TranscriptSegment(
@@ -66,10 +72,15 @@ def merge_segments_by_sentence(
     for prev, curr in zip(stripped, stripped[1:]):
         block_len = curr.end_seconds - block_start
         gap = curr.start_seconds - prev.end_seconds
-        ends_sentence = prev.text[-1] in _SENTENCE_END
+        last_char = prev.text[-1]
+        ends_sentence = last_char in _SENTENCE_END
+        mid_clause = last_char in _CONTINUATION
         speaker_changed = curr.speaker != block_speaker
+        # A pause at a comma is just a breath, not a sentence boundary — don't
+        # let it break the line. ``max_block_sec`` still caps runaway blocks.
+        gap_breaks = gap >= silence_gap_sec and not mid_clause
 
-        if ends_sentence or gap >= silence_gap_sec or block_len > max_block_sec or speaker_changed:
+        if ends_sentence or speaker_changed or block_len > max_block_sec or gap_breaks:
             result.append(
                 TranscriptSegment(
                     start_seconds=block_start,

@@ -34,6 +34,30 @@ def test_splits_on_large_silence_gap() -> None:
     assert [s.text for s in merged] == ["ええと", "始めましょう"]
 
 
+def test_comma_pause_does_not_break_line() -> None:
+    # Speaker pauses after a comma; the gap should NOT split the line because
+    # the clause is clearly unfinished. It joins through to the sentence end.
+    segments = [
+        _seg(0.0, 1.0, "本日はお忙しい中、"),
+        _seg(3.0, 4.0, "お集まりいただき"),  # 2s gap after a comma
+        _seg(4.0, 5.0, "ありがとうございます。"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP", silence_gap_sec=0.8)
+    assert [s.text for s in merged] == ["本日はお忙しい中、お集まりいただきありがとうございます。"]
+
+
+def test_comma_split_still_capped_by_max_block() -> None:
+    # Even mid-clause, a runaway block is still capped so it cannot grow forever.
+    segments = [
+        _seg(0.0, 40.0, "とても長い前置きがあって、"),
+        _seg(40.0, 41.0, "続きます。"),
+    ]
+    merged = merge_segments_by_sentence(
+        segments, language="ja-JP", silence_gap_sec=0.8, max_block_sec=30.0
+    )
+    assert [s.text for s in merged] == ["とても長い前置きがあって、", "続きます。"]
+
+
 def test_english_joins_with_space() -> None:
     segments = [
         _seg(0.0, 1.0, "Good"),
