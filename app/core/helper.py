@@ -14,6 +14,8 @@ import os
 import platform
 import shutil
 import subprocess
+import threading
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 from app.core.errors import HelperProtocolError
@@ -148,6 +150,94 @@ def _parse_envelope(stdout: str, helper_name: str) -> dict:
     return envelope
 
 
+def _extract_envelope(
+    lines: Iterable[str],
+    helper_name: str,
+    progress_callback: Callable[[dict], None] | None = None,
+) -> dict:
+    """Pick the result envelope out of a helper's newline-delimited JSON output.
+
+    Helpers may interleave progress notices (``{"progress": {...}}``) before the
+    final result envelope (the object carrying ``"ok"``). Progress objects are
+    dispatched to ``progress_callback`` as they arrive; the last envelope wins.
+    Lines that are not JSON objects are ignored so a single-line response (the
+    common case) and a streamed multi-line response are both handled.
+    """
+    envelope: dict | None = None
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if "ok" not in obj and isinstance(obj.get("progress"), dict):
+            if progress_callback is not None:
+                progress_callback(obj["progress"])
+            continue
+        envelope = obj
+    if envelope is None:
+        raise HelperProtocolError(f"helper {helper_name} returned no JSON envelope")
+    return envelope
+
+
+def _stream_lines(
+    path: Path, args: list[str], input_text: str | None, timeout: float | None
+) -> Iterator[str]:
+    """Run a helper and yield its stdout lines as they arrive.
+
+    Used when a progress callback is supplied so notices reach the UI live
+    instead of all at once after the process exits. Enforces ``timeout`` with a
+    watchdog that kills the process; surfaces stderr only when nothing was
+    written to stdout (parity with the buffered ``_run``).
+    """
+    try:
+        proc = subprocess.Popen(
+            [str(path), *args],
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as e:
+        raise HelperProtocolError(f"failed to execute helper {path}: {e}") from e
+
+    timed_out = False
+    timer: threading.Timer | None = None
+    if timeout is not None:
+
+        def _kill() -> None:
+            nonlocal timed_out
+            timed_out = True
+            proc.kill()
+
+        timer = threading.Timer(timeout, _kill)
+        timer.start()
+
+    yielded = 0
+    try:
+        if input_text is not None and proc.stdin is not None:
+            proc.stdin.write(input_text)
+            proc.stdin.close()
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            yielded += 1
+            yield line
+        proc.wait()
+    finally:
+        if timer is not None:
+            timer.cancel()
+
+    if timed_out:
+        raise HelperProtocolError(f"helper {path.name} timed out after {timeout}s")
+    if yielded == 0 and proc.returncode not in (0, None):
+        stderr = (proc.stderr.read() if proc.stderr is not None else "").strip()
+        raise HelperProtocolError(f"helper {path.name} exited {proc.returncode}: {stderr[:200]}")
+
+
 def run_helper_check(name: str, explicit_path: str | None = None) -> bool:
     """Return True iff `<helper> --check` reports availability."""
     path = resolve_helper_path(name, explicit_path)
@@ -169,8 +259,13 @@ def run_json_helper(
     input_json: dict | None = None,
     timeout: float | None = None,
     explicit_path: str | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     """Run a helper, returning the inner payload of an `{"ok": true, ...}` envelope.
+
+    When ``progress_callback`` is given the helper is run in streaming mode and
+    any ``{"progress": {...}}`` notices it emits before the final envelope are
+    forwarded live. Without it the helper is run buffered (the common case).
 
     Raises HelperProtocolError when the helper is missing, crashes, returns
     malformed JSON, or reports `ok: false`.
@@ -180,8 +275,13 @@ def run_json_helper(
         raise HelperProtocolError(f"helper {name} not found")
 
     input_text = json.dumps(input_json) if input_json is not None else None
-    stdout = _run(path, args, input_text=input_text, timeout=timeout)
-    envelope = _parse_envelope(stdout, name)
+    if progress_callback is not None:
+        envelope = _extract_envelope(
+            _stream_lines(path, args, input_text, timeout), name, progress_callback
+        )
+    else:
+        stdout = _run(path, args, input_text=input_text, timeout=timeout)
+        envelope = _extract_envelope(stdout.splitlines(), name)
 
     if not envelope.get("ok"):
         error = envelope.get("error") or {}

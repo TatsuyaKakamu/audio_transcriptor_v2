@@ -1,10 +1,18 @@
 // apple-transcribe: transcribe an audio file using Apple's SpeechAnalyzer /
 // SpeechTranscriber and emit a transcript JSON.
 //
-// Protocol (stdout JSON), mirrored by app/transcription/apple_speech.py:
+// Protocol (newline-delimited stdout JSON), mirrored by
+// app/transcription/apple_speech.py + app/core/helper.py:
 //   apple-transcribe --check
 //   apple-transcribe --input meeting.m4a --language ja-JP
 //   apple-transcribe --input meeting.wav --output transcript.json --language ja-JP
+//
+// During transcription the helper streams zero or more progress notices, each on
+// its own line, before the final result envelope:
+//   {"progress": {"fraction": 0.42, "processed_seconds": 12.3, "total_seconds": 30.0}}
+//   {"ok": true, "transcript": {...}}
+// The Python side treats any line carrying "progress" (and no "ok") as a notice
+// and the final line carrying "ok" as the result.
 
 import Foundation
 
@@ -37,19 +45,41 @@ struct TranscriptOut: Codable {
     var metadata: [String: String]
 }
 
-func emit(_ object: Any) -> Never {
-    if let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-        let text = String(data: data, encoding: .utf8)
-    {
-        print(text)
+// Write one JSON object as a line on stdout, unbuffered, so the Python side
+// receives progress notices live (a piped `print` would buffer until exit).
+func writeLine(_ object: Any) {
+    var data: Data
+    if let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) {
+        data = encoded
     } else {
-        print("{\"ok\": false, \"error\": {\"code\": \"ENCODE\", \"message\": \"failed to encode response\"}}")
+        data = Data(
+            "{\"ok\": false, \"error\": {\"code\": \"ENCODE\", \"message\": \"failed to encode response\"}}".utf8
+        )
     }
+    data.append(0x0a)  // newline; one write keeps the line atomic on the pipe
+    try? FileHandle.standardOutput.write(contentsOf: data)
+}
+
+func emit(_ object: Any) -> Never {
+    writeLine(object)
     exit(0)
 }
 
 func emitError(_ code: String, _ message: String) -> Never {
     emit(["ok": false, "error": ["code": code, "message": message]])
+}
+
+// A progress notice emitted before the final envelope. `app/core/helper.py`
+// forwards the `fraction` to the GUI progress bar; lines without "ok" that
+// carry a "progress" object are treated as notices, not the result.
+func emitProgress(fraction: Double, processed: Double, total: Double) {
+    writeLine([
+        "progress": [
+            "fraction": fraction,
+            "processed_seconds": processed,
+            "total_seconds": total,
+        ]
+    ])
 }
 
 func arg(_ name: String, in args: [String]) -> String? {
@@ -94,6 +124,11 @@ func transcribe(path: String, language: String) async throws -> TranscriptOut {
             userInfo: [NSLocalizedDescriptionKey: "could not open audio file"])
     }
 
+    // Total duration lets us turn each result's end timestamp into a 0..1
+    // fraction for the progress bar. Guard against a zero sample rate.
+    let sampleRate = audioFile.fileFormat.sampleRate
+    let totalSeconds = sampleRate > 0 ? Double(audioFile.length) / sampleRate : 0
+
     // Collect results inside the task and return them, so we never mutate a
     // captured var across concurrency domains (Swift 6 strict concurrency).
     let resultsTask = Task { () -> [SegmentOut] in
@@ -111,6 +146,11 @@ func transcribe(path: String, language: String) async throws -> TranscriptOut {
                     text: text
                 )
             )
+            if totalSeconds > 0 {
+                let processed = min(range.end.seconds, totalSeconds)
+                let fraction = max(0.0, min(1.0, processed / totalSeconds))
+                emitProgress(fraction: fraction, processed: processed, total: totalSeconds)
+            }
         }
         return collected
     }

@@ -98,8 +98,16 @@ class TranscriptionWorker(QThread):
             self.log_message.emit("INFO", f"Start: {path}")
             file_start = time.monotonic()
 
+            # Map the current file's transcription fraction (0..1) onto the
+            # overall bar so a single long file shows live progress instead of
+            # jumping 0% -> 100%. Qt signals marshal safely across the thread.
+            file_index = i - 1
+
+            def on_file_progress(fraction: float, _base: int = file_index) -> None:
+                self.progress.emit((_base + fraction) / total_files * 100)
+
             try:
-                result = pipeline.run(path, options)
+                result = pipeline.run(path, options, on_file_progress)
             except Exception as e:
                 had_errors = True
                 failure_count += 1

@@ -15,7 +15,11 @@ from app.core.errors import (
 )
 from app.core.models import MeetingMinutes, Transcript
 from app.summary.base import SummaryBackend, SummaryOptions
-from app.transcription.base import TranscriptionBackend, TranscriptionOptions
+from app.transcription.base import (
+    ProgressCallback,
+    TranscriptionBackend,
+    TranscriptionOptions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +160,18 @@ class Pipeline:
         self.writers = writers
         self.logger = logger
 
-    def run(self, audio_path: Path, options: PipelineOptions | None = None) -> PipelineResult:
+    def run(
+        self,
+        audio_path: Path,
+        options: PipelineOptions | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> PipelineResult:
         options = options or PipelineOptions()
         start = time.monotonic()
 
-        transcript = self.transcription_backend.transcribe(audio_path, options.transcription)
+        transcript = self.transcription_backend.transcribe(
+            audio_path, options.transcription, progress_callback
+        )
         transcript_md_path = self.writers.write_transcript_markdown(transcript)
         self.logger.info("Wrote transcript: %s", transcript_md_path)
 

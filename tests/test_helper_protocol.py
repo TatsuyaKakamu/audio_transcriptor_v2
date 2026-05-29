@@ -65,6 +65,56 @@ def test_run_json_helper_ok_false_raises(make_fake_helper) -> None:
     assert "MODEL_UNAVAILABLE" in str(exc.value)
 
 
+def test_run_json_helper_tolerates_progress_lines_without_callback(tmp_path) -> None:
+    # Even without a callback, leading progress notices must not break parsing.
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.5}}\\n\')\n'
+        'sys.stdout.write(\'{"ok": true, "transcript": {"backend": "apple_speech"}}\\n\')\n',
+    )
+    out = run_json_helper(name="apple-transcribe", args=["--input", "x"], explicit_path=str(helper))
+    assert out["ok"] is True
+    assert out["transcript"]["backend"] == "apple_speech"
+
+
+def test_run_json_helper_streams_progress_to_callback(tmp_path) -> None:
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.25}}\\n\')\n'
+        'sys.stdout.write(\'{"progress": {"fraction": 0.75}}\\n\')\n'
+        'sys.stdout.write(\'{"ok": true, "transcript": {"backend": "apple_speech"}}\\n\')\n',
+    )
+    seen: list[dict] = []
+    out = run_json_helper(
+        name="apple-transcribe",
+        args=["--input", "x"],
+        explicit_path=str(helper),
+        progress_callback=seen.append,
+    )
+    assert out["ok"] is True
+    assert [p["fraction"] for p in seen] == [0.25, 0.75]
+
+
+def test_run_json_helper_streaming_no_envelope_raises(tmp_path) -> None:
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.5}}\\n\')\n',
+    )
+    with pytest.raises(HelperProtocolError):
+        run_json_helper(
+            name="apple-transcribe",
+            args=["--input", "x"],
+            explicit_path=str(helper),
+            progress_callback=lambda _p: None,
+        )
+
+
 def test_run_json_helper_non_json_raises(tmp_path) -> None:
     helper = _write_exec(
         tmp_path / "apple-summarize",
