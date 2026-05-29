@@ -135,6 +135,39 @@ def test_resolve_helper_path_prefers_explicit(make_fake_helper) -> None:
     assert resolve_helper_path("apple-summarize", "/missing") is None
 
 
+def test_built_binary_used_when_fresh(monkeypatch, tmp_path) -> None:
+    binary = tmp_path / "apple-transcribe"
+    binary.write_text("bin")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: binary)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: False)
+    rebuilt: list = []
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: rebuilt.append(name))
+    assert resolve_helper_path("apple-transcribe") == binary
+    assert rebuilt == []  # fresh binary -> no rebuild
+
+
+def test_stale_binary_triggers_rebuild(monkeypatch, tmp_path) -> None:
+    stale = tmp_path / "old-apple-transcribe"
+    stale.write_text("old")
+    fresh = tmp_path / "new-apple-transcribe"
+    fresh.write_text("new")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: stale)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: True)
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: fresh)
+    # Stale cache must be rebuilt and the fresh binary returned.
+    assert resolve_helper_path("apple-transcribe") == fresh
+
+
+def test_stale_binary_falls_back_when_rebuild_unavailable(monkeypatch, tmp_path) -> None:
+    stale = tmp_path / "apple-transcribe"
+    stale.write_text("old")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: stale)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: True)
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: None)
+    # Build skipped (e.g. non-macOS): keep using the cached binary, don't break.
+    assert resolve_helper_path("apple-transcribe") == stale
+
+
 def _no_build_called(monkeypatch) -> list:
     calls: list = []
     monkeypatch.setattr(helper_mod, "_build_attempted", set())

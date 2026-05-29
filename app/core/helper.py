@@ -44,6 +44,24 @@ def _built_binary(name: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def _built_binary_is_stale(name: str, binary: Path) -> bool:
+    """True when a Swift source is newer than the cached binary.
+
+    Without this, a `git pull` that changes the helper sources would keep using
+    the previously built binary forever (resolve returns the cache first), so
+    new behaviour like progress streaming would silently never run.
+    """
+    pkg = _HELPER_PACKAGES.get(name)
+    if pkg is None:
+        return False
+    try:
+        binary_mtime = binary.stat().st_mtime
+        sources = [pkg / "Package.swift", *(pkg / "Sources").rglob("*.swift")]
+        return any(src.stat().st_mtime > binary_mtime for src in sources if src.exists())
+    except OSError:
+        return False
+
+
 def _macos_supports_helpers() -> bool:
     if platform.system() != "Darwin":
         return False
@@ -108,14 +126,21 @@ def resolve_helper_path(name: str, explicit_path: str | None = None) -> Path | N
         return candidate if candidate.exists() else None
 
     built = _built_binary(name)
-    if built is not None:
+    if built is not None and not _built_binary_is_stale(name, built):
         return built
 
     found = shutil.which(name)
-    if found:
+    if built is None and found:
         return Path(found)
 
-    return _maybe_build_helper(name)
+    # No binary yet, or the cached one is stale: (re)build. Fall back to whatever
+    # we already had if the build is skipped (non-macOS, opted out) or fails.
+    rebuilt = _maybe_build_helper(name)
+    if rebuilt is not None:
+        return rebuilt
+    if built is not None:
+        return built
+    return Path(found) if found else None
 
 
 def _run(path: Path, args: list[str], input_text: str | None, timeout: float | None) -> str:
@@ -205,6 +230,19 @@ def _stream_lines(
     except OSError as e:
         raise HelperProtocolError(f"failed to execute helper {path}: {e}") from e
 
+    # Drain stderr on a separate thread. The Apple frameworks can be chatty on
+    # stderr; if we only read stdout it can fill the stderr pipe buffer and
+    # deadlock the helper mid-transcription (so progress would never advance).
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr is not None:
+            for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
     timed_out = False
     timer: threading.Timer | None = None
     if timeout is not None:
@@ -223,18 +261,21 @@ def _stream_lines(
             proc.stdin.write(input_text)
             proc.stdin.close()
         assert proc.stdout is not None
-        for line in proc.stdout:
+        # readline (not `for line in proc.stdout`) so each line is delivered as
+        # soon as it is flushed, rather than waiting for a read-ahead block.
+        for line in iter(proc.stdout.readline, ""):
             yielded += 1
             yield line
         proc.wait()
     finally:
         if timer is not None:
             timer.cancel()
+        stderr_thread.join(timeout=1.0)
 
     if timed_out:
         raise HelperProtocolError(f"helper {path.name} timed out after {timeout}s")
     if yielded == 0 and proc.returncode not in (0, None):
-        stderr = (proc.stderr.read() if proc.stderr is not None else "").strip()
+        stderr = "".join(stderr_chunks).strip()
         raise HelperProtocolError(f"helper {path.name} exited {proc.returncode}: {stderr[:200]}")
 
 
