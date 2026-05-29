@@ -25,7 +25,18 @@ def test_merges_fragments_until_sentence_end_japanese() -> None:
     assert merged[1].end_seconds == 5.0
 
 
-def test_splits_on_large_silence_gap() -> None:
+def test_mid_sentence_pause_does_not_break_by_default() -> None:
+    # By default (silence_gap_sec=None) a pause must NOT break the line; only
+    # sentence-final punctuation does.
+    segments = [
+        _seg(0.0, 1.0, "本日の議題は"),
+        _seg(5.0, 6.0, "予算です。"),  # 4s pause, no punctuation before it
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["本日の議題は予算です。"]
+
+
+def test_splits_on_large_silence_gap_when_opted_in() -> None:
     segments = [
         _seg(0.0, 1.0, "ええと"),
         _seg(5.0, 6.0, "始めましょう"),  # 4s gap, no punctuation

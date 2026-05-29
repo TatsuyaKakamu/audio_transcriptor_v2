@@ -45,19 +45,24 @@ def merge_segments_by_sentence(
     segments: list[TranscriptSegment],
     *,
     language: str = "ja-JP",
-    silence_gap_sec: float = 0.8,
+    silence_gap_sec: float | None = None,
     max_block_sec: float = 30.0,
 ) -> list[TranscriptSegment]:
     """Merge fragmented segments into sentence-aligned blocks.
 
-    A block is flushed (and a new one started) when the previous segment ends
-    with sentence-final punctuation, when the speaker changes, when the block
-    would grow longer than ``max_block_sec``, or when the silent gap to the next
-    segment is at least ``silence_gap_sec`` *and* the previous fragment does not
-    end mid-clause (e.g. on a "、" comma). Keeping commas from triggering a gap
-    split avoids breaking a line in the middle of a sentence. Timestamps span
-    the merged fragments; per-fragment ``confidence`` is dropped since it no
-    longer applies to the combined text.
+    A block is flushed (and a new one started) only at a real sentence boundary:
+    when the previous segment ends with sentence-final punctuation (``。！？`` for
+    CJK, ``.!?`` for Latin), when the speaker changes, or when the block would
+    grow longer than ``max_block_sec`` (a safety cap for long stretches with no
+    punctuation). A mid-sentence pause does **not** break the line by default,
+    since speakers routinely pause to breathe or hesitate — breaking there
+    produced line breaks at non-punctuation points.
+
+    ``silence_gap_sec`` is opt-in: when set, a silent gap of at least that many
+    seconds also breaks the block, except when the previous fragment ends
+    mid-clause (e.g. on a "、" comma). Leave it ``None`` to break on punctuation
+    only. Timestamps span the merged fragments; per-fragment ``confidence`` is
+    dropped since it no longer applies to the combined text.
     """
     stripped = [
         TranscriptSegment(
@@ -88,9 +93,11 @@ def merge_segments_by_sentence(
         ends_sentence = last_char in sentence_end
         mid_clause = last_char in _CONTINUATION
         speaker_changed = curr.speaker != block_speaker
-        # A pause at a comma is just a breath, not a sentence boundary — don't
-        # let it break the line. ``max_block_sec`` still caps runaway blocks.
-        gap_breaks = gap >= silence_gap_sec and not mid_clause
+        # Gap-based splitting is opt-in. Even when enabled, a pause at a comma is
+        # just a breath, not a sentence boundary, so it never breaks the line.
+        gap_breaks = (
+            silence_gap_sec is not None and gap >= silence_gap_sec and not mid_clause
+        )
 
         if ends_sentence or speaker_changed or block_len > max_block_sec or gap_breaks:
             result.append(
