@@ -46,23 +46,28 @@ def merge_segments_by_sentence(
     *,
     language: str = "ja-JP",
     silence_gap_sec: float | None = None,
-    max_block_sec: float = 30.0,
+    max_block_sec: float | None = None,
 ) -> list[TranscriptSegment]:
     """Merge fragmented segments into sentence-aligned blocks.
 
-    A block is flushed (and a new one started) only at a real sentence boundary:
-    when the previous segment ends with sentence-final punctuation (``。！？`` for
-    CJK, ``.!?`` for Latin), when the speaker changes, or when the block would
-    grow longer than ``max_block_sec`` (a safety cap for long stretches with no
-    punctuation). A mid-sentence pause does **not** break the line by default,
-    since speakers routinely pause to breathe or hesitate — breaking there
-    produced line breaks at non-punctuation points.
+    By default a block is flushed (and a new one started) only at a real
+    sentence boundary: when the previous segment ends with sentence-final
+    punctuation (``。！？`` for CJK, ``.!?`` for Latin) or when the speaker
+    changes. A mid-sentence pause does **not** break the line, since speakers
+    routinely pause to breathe or hesitate — breaking there produced line breaks
+    at non-punctuation points.
 
-    ``silence_gap_sec`` is opt-in: when set, a silent gap of at least that many
-    seconds also breaks the block, except when the previous fragment ends
-    mid-clause (e.g. on a "、" comma). Leave it ``None`` to break on punctuation
-    only. Timestamps span the merged fragments; per-fragment ``confidence`` is
-    dropped since it no longer applies to the combined text.
+    Two optional safety valves are off by default:
+
+    - ``silence_gap_sec``: when set, a silent gap of at least that many seconds
+      also breaks the block, except when the previous fragment ends mid-clause
+      (e.g. on a "、" comma).
+    - ``max_block_sec``: when set, caps how long (in wall-clock span across the
+      merged fragments) a block may grow before it is force-flushed.
+
+    Leave both ``None`` to break on punctuation (and speaker) only. Timestamps
+    span the merged fragments; per-fragment ``confidence`` is dropped since it no
+    longer applies to the combined text.
     """
     stripped = [
         TranscriptSegment(
@@ -98,8 +103,9 @@ def merge_segments_by_sentence(
         gap_breaks = (
             silence_gap_sec is not None and gap >= silence_gap_sec and not mid_clause
         )
+        too_long = max_block_sec is not None and block_len > max_block_sec
 
-        if ends_sentence or speaker_changed or block_len > max_block_sec or gap_breaks:
+        if ends_sentence or speaker_changed or too_long or gap_breaks:
             result.append(
                 TranscriptSegment(
                     start_seconds=block_start,

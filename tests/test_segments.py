@@ -57,8 +57,19 @@ def test_comma_pause_does_not_break_line() -> None:
     assert [s.text for s in merged] == ["本日はお忙しい中、お集まりいただきありがとうございます。"]
 
 
-def test_comma_split_still_capped_by_max_block() -> None:
-    # Even mid-clause, a runaway block is still capped so it cannot grow forever.
+def test_long_block_not_split_by_default() -> None:
+    # By default there is no max-length cap, so a long stretch with a mid-sentence
+    # pause stays as one block until real sentence-final punctuation.
+    segments = [
+        _seg(0.0, 40.0, "とても長い前置きがあって"),
+        _seg(40.0, 41.0, "続きます。"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["とても長い前置きがあって続きます。"]
+
+
+def test_max_block_sec_caps_when_opted_in() -> None:
+    # When explicitly set, max_block_sec still force-flushes a runaway block.
     segments = [
         _seg(0.0, 40.0, "とても長い前置きがあって、"),
         _seg(40.0, 41.0, "続きます。"),
