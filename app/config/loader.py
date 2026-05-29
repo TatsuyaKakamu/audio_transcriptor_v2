@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 from app.config.schema import (
@@ -220,3 +221,58 @@ def load_full_config(path: Path | None = None) -> Config:
     """Load the v2 backend-abstraction config; falls back to defaults on any error."""
     data = _read_toml(path or CONFIG_PATH)
     return Config() if data is None else _parse_v2(data)
+
+
+def override_config(
+    config: Config,
+    *,
+    mode: str | None = None,
+    transcription_backend: str | None = None,
+    summary_backend: str | None = None,
+    language: str | None = None,
+    model: str | None = None,
+) -> Config:
+    """Return a copy of *config* with the given fields overridden.
+
+    Lets the GUI worker and the CLI apply per-run, independent backend
+    selections on top of the on-disk config. ``None`` means "leave as
+    configured", so transcription and summary can be controlled separately
+    (e.g. force ``summary_backend="apple_foundation"`` while leaving
+    transcription on ``auto``). Each value is validated against its enum and
+    silently falls back to the configured value when invalid.
+    """
+    app = config.app
+    if mode is not None:
+        app = replace(
+            app, mode=_validate_choice(mode, _MODES, field_name="app.mode", default=app.mode)
+        )
+    if language is not None:
+        app = replace(app, language=language)
+
+    advanced = config.advanced
+    if transcription_backend is not None:
+        advanced = replace(
+            advanced,
+            transcription_backend=_validate_choice(
+                transcription_backend,
+                _TRANSCRIPTION_BACKENDS,
+                field_name="advanced.transcription_backend",
+                default=advanced.transcription_backend,
+            ),
+        )
+    if summary_backend is not None:
+        advanced = replace(
+            advanced,
+            summary_backend=_validate_choice(
+                summary_backend,
+                _SUMMARY_BACKENDS,
+                field_name="advanced.summary_backend",
+                default=advanced.summary_backend,
+            ),
+        )
+
+    transcription = config.transcription
+    if model is not None:
+        transcription = replace(transcription, model=model)
+
+    return replace(config, app=app, advanced=advanced, transcription=transcription)

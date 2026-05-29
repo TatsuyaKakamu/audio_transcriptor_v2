@@ -1,10 +1,9 @@
 import time
-from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from app.config import AppConfig, load_full_config
+from app.config import AppConfig, load_full_config, override_config
 from app.core.errors import NoTranscriptionBackendError
 from app.core.pipeline import PipelineOptions, build_pipeline, describe_selection
 from app.summary.base import SummaryOptions
@@ -27,6 +26,8 @@ class TranscriptionWorker(QThread):
         model: str,
         cfg: AppConfig,
         mode: str | None = None,
+        transcription_backend: str | None = None,
+        summary_backend: str | None = None,
     ) -> None:
         super().__init__()
         self._files = files
@@ -34,27 +35,27 @@ class TranscriptionWorker(QThread):
         self._model = model
         self._cfg = cfg
         self._mode = mode
+        # Independent per-axis backend overrides ("auto" / None = follow mode).
+        self._transcription_backend = transcription_backend
+        self._summary_backend = summary_backend
 
     def _build_config(self):
-        """v2 config with the UI's mode/language/model and the legacy minutes toggle."""
+        """v2 config with the UI's mode/language/model and per-axis backend overrides."""
         config = load_full_config()
-        advanced = config.advanced
-        # Preserve the legacy "[minutes].enabled = false" behaviour.
-        if not self._cfg.minutes.enabled:
-            advanced = replace(advanced, summary_backend="none")
-        # The UI can pick the processing mode (auto / apple_native / legacy)
-        # explicitly; fall back to the configured mode when not provided.
-        app = replace(
-            config.app,
-            language=_TRANSCRIBE_LOCALE.get(self._language, config.app.language),
-        )
-        if self._mode:
-            app = replace(app, mode=self._mode)
-        return replace(
+        # The transcription and summary backends are controlled independently;
+        # "auto" means "let the mode decide" so it is left untouched.
+        summary_backend = self._summary_backend
+        # Preserve the legacy "[minutes].enabled = false" behaviour unless the UI
+        # explicitly asked for a specific summary backend.
+        if not self._cfg.minutes.enabled and summary_backend in (None, "auto"):
+            summary_backend = "none"
+        return override_config(
             config,
-            app=app,
-            advanced=advanced,
-            transcription=replace(config.transcription, model=self._model),
+            mode=self._mode or None,
+            transcription_backend=self._transcription_backend or None,
+            summary_backend=summary_backend or None,
+            language=_TRANSCRIBE_LOCALE.get(self._language, config.app.language),
+            model=self._model,
         )
 
     def run(self) -> None:
