@@ -38,12 +38,16 @@ class ChainedSummaryBackend(SummaryBackend):
         real = [b for b in backends if b.name != "none"]
         self.name = real[0].name if real else "none"
         self.fallback_occurred = False
+        # Reasons every real backend failed, in attempt order ("name: message").
+        # The pipeline surfaces these so a swallowed failure (e.g. Apple's 4096
+        # token context exceeded) is visible in the UI/CLI, not just the console.
+        self.failure_reasons: list[str] = []
 
     def is_available(self) -> bool:
         return True
 
     def summarize(self, transcript: Transcript, options: SummaryOptions) -> MeetingMinutes | None:
-        last_error: Exception | None = None
+        self.failure_reasons = []
         attempted = 0
         for backend in self._backends:
             if backend.name == "none":
@@ -55,10 +59,10 @@ class ChainedSummaryBackend(SummaryBackend):
                     logger.info("summary fell back to %s", backend.name)
                 return minutes
             except SummaryFailedError as e:
-                last_error = e
                 attempted += 1
+                self.failure_reasons.append(f"{backend.name}: {e}")
                 logger.warning("summary backend %s failed: %s", backend.name, e)
-        if last_error is not None:
+        if self.failure_reasons:
             logger.warning("all summary backends failed; producing transcript only")
             self.fallback_occurred = True
         return None

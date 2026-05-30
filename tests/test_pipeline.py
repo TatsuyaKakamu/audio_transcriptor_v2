@@ -162,6 +162,40 @@ def test_pipeline_summary_falls_back_to_ollama(tmp_path, make_fake_helper, monke
     assert result.fallback_occurred
 
 
+def test_pipeline_summary_failure_reason_surfaced(tmp_path, make_fake_helper) -> None:
+    transcribe_helper = make_fake_helper(
+        "apple-transcribe",
+        check={"ok": True},
+        main={"ok": True, "transcript": _TRANSCRIPT_PAYLOAD},
+    )
+    summarize_helper = make_fake_helper(
+        "apple-summarize",
+        check={"ok": True},
+        main={
+            "ok": False,
+            "error": {"code": "GENERATION_FAILED", "message": "exceededContextWindowSize"},
+        },
+    )
+    # Apple available but Ollama not: chain is [apple_foundation, none], so the
+    # only real backend fails and the run degrades to transcript-only.
+    caps = _caps(apple_speech_available=True, apple_foundation_available=True)
+    cfg = _config(
+        tmp_path,
+        apple_transcribe_path=str(transcribe_helper),
+        apple_summarize_path=str(summarize_helper),
+    )
+    pipeline, selection = build_pipeline(cfg, caps)
+    assert selection.summary_order == ["apple_foundation", "none"]
+
+    result = pipeline.run(tmp_path / "meeting.wav")
+    assert result.minutes is None
+    assert result.summary_backend == "none"
+    assert result.fallback_occurred
+    assert result.summary_failure_reason is not None
+    assert "apple_foundation" in result.summary_failure_reason
+    assert "exceededContextWindowSize" in result.summary_failure_reason
+
+
 def test_pipeline_transcription_falls_back_to_mlx(tmp_path, make_fake_helper, monkeypatch) -> None:
     from app.services import transcriber
 

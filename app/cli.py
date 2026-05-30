@@ -250,6 +250,12 @@ def cmd_transcribe(
         path = Path(raw).expanduser()
         try:
             result = pipeline.run(path, options)
+            if result.minutes_md_path is None and result.summary_failure_reason:
+                logger.warning(
+                    "minutes skipped for %s (transcript only): %s",
+                    path.name,
+                    result.summary_failure_reason,
+                )
             logger.info(
                 "done %s: transcript=%s minutes=%s elapsed=%.1fs",
                 path.name,
