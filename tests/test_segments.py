@@ -101,6 +101,30 @@ def test_japanese_breaks_only_on_full_width_sentence_end() -> None:
     assert [s.text for s in merged] == ["おはよう。", "元気ですか？", "すごい！"]
 
 
+def test_sentence_end_inside_fragment_splits_line() -> None:
+    # A 。 in the middle of a fragment must still break the line, not only when
+    # it is the fragment's last character.
+    segments = [
+        _seg(0.0, 2.0, "はい。それでは始めます"),
+        _seg(2.0, 4.0, "本日の議題は予算です。"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == [
+        "はい。",
+        "それでは始めます本日の議題は予算です。",
+    ]
+    # Timestamps stay monotonic across the split.
+    assert merged[0].start_seconds == 0.0
+    assert merged[0].end_seconds == merged[1].start_seconds
+    assert merged[1].end_seconds == 4.0
+
+
+def test_multiple_sentences_in_one_fragment_all_split() -> None:
+    segments = [_seg(0.0, 6.0, "おはよう。元気ですか？またね！")]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["おはよう。", "元気ですか？", "またね！"]
+
+
 def test_english_dot_still_breaks_line() -> None:
     segments = [
         _seg(0.0, 1.0, "Hello."),

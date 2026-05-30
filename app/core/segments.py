@@ -130,4 +130,54 @@ def merge_segments_by_sentence(
             speaker=block_speaker,
         )
     )
-    return result
+    # A fragment's terminal punctuation is only checked at its last character, so
+    # a sentence end that lands *inside* a fragment ("はい。それでは…") would not
+    # trigger a break above. Split each merged block on every sentence-final mark
+    # so the line always breaks at 。！？ regardless of fragment boundaries.
+    return [
+        out
+        for block in result
+        for out in _split_block_on_sentence_end(block, sentence_end)
+    ]
+
+
+def _split_block_on_sentence_end(
+    block: TranscriptSegment, sentence_end: frozenset
+) -> list[TranscriptSegment]:
+    text = block.text
+    pieces: list[str] = []
+    start = 0
+    for i, ch in enumerate(text):
+        if ch in sentence_end:
+            pieces.append(text[start : i + 1])
+            start = i + 1
+    if start < len(text):
+        pieces.append(text[start:])
+    pieces = [p.strip() for p in pieces if p.strip()]
+    if len(pieces) <= 1:
+        return [block]
+    # Distribute the block's time span across the resulting sentences in
+    # proportion to their character length; exact per-sentence timing is lost
+    # once fragments are merged, so this keeps timestamps monotonic and plausible.
+    total_chars = sum(len(p) for p in pieces)
+    span = block.end_seconds - block.start_seconds
+    out: list[TranscriptSegment] = []
+    cursor = block.start_seconds
+    consumed = 0
+    for idx, piece in enumerate(pieces):
+        consumed += len(piece)
+        end = (
+            block.end_seconds
+            if idx == len(pieces) - 1
+            else block.start_seconds + span * (consumed / total_chars)
+        )
+        out.append(
+            TranscriptSegment(
+                start_seconds=cursor,
+                end_seconds=end,
+                text=piece,
+                speaker=block.speaker,
+            )
+        )
+        cursor = end
+    return out
