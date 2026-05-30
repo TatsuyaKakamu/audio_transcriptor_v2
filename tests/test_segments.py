@@ -68,6 +68,40 @@ def test_long_block_not_split_by_default() -> None:
     assert [s.text for s in merged] == ["とても長い前置きがあって続きます。"]
 
 
+def test_long_speech_force_split_by_default() -> None:
+    # No sentence-final punctuation, but the speaker talks continuously past the
+    # default 60s spoken-time budget, so a safety split kicks in. Once the block
+    # already holds >60s of speech, the next fragment starts a fresh block.
+    segments = [
+        _seg(0.0, 35.0, "ずっと話し続けていて"),
+        _seg(35.0, 65.0, "まだまだ終わらず"),  # block now 65s of speech (>60)
+        _seg(65.0, 70.0, "ようやく一区切り"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["ずっと話し続けていてまだまだ終わらず", "ようやく一区切り"]
+
+
+def test_long_silence_does_not_count_toward_speech_budget() -> None:
+    # The same two short utterances, but separated by a huge silence. Wall-clock
+    # span is ~10min yet spoken time is tiny, so the speech budget must NOT split
+    # the line (silence is excluded from the budget).
+    segments = [
+        _seg(0.0, 5.0, "始めますね"),
+        _seg(600.0, 605.0, "再開します。"),  # 10min silent gap, only 10s spoken
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP")
+    assert [s.text for s in merged] == ["始めますね再開します。"]
+
+
+def test_max_speech_sec_disabled_keeps_one_block() -> None:
+    segments = [
+        _seg(0.0, 50.0, "ずっと話し続けていて"),
+        _seg(50.0, 200.0, "まだ続いています。"),
+    ]
+    merged = merge_segments_by_sentence(segments, language="ja-JP", max_speech_sec=None)
+    assert [s.text for s in merged] == ["ずっと話し続けていてまだ続いています。"]
+
+
 def test_max_block_sec_caps_when_opted_in() -> None:
     # When explicitly set, max_block_sec still force-flushes a runaway block.
     segments = [
