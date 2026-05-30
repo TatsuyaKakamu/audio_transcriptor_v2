@@ -87,15 +87,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self._build_transcription_group())
         root.addWidget(self._build_summary_group())
 
-        # Warns about backend combinations that contend for Apple's on-device
-        # models (hidden unless a problematic pairing is selected).
-        self._warning_label = QLabel()
-        self._warning_label.setWordWrap(True)
-        self._warning_label.setStyleSheet("color: #b35900;")
-        self._warning_label.setVisible(False)
-        root.addWidget(self._warning_label)
-
-        # Reflect the initial backend choice on the model control and warning.
+        # Reflect the initial backend choice on the model control.
         self._on_transcription_changed()
 
         self._status_label = QLabel("待機中")
@@ -165,7 +157,6 @@ class MainWindow(QMainWindow):
             "自動: 利用可能な最良のものを選択（必要なら Ollama にフォールバック）\n"
             "Apple Foundation / Ollama を明示指定、または「なし」で要約を無効化。"
         )
-        self._sm_combo.currentIndexChanged.connect(self._update_warning)
         form.addRow("エンジン:", self._sm_combo)
         return group
 
@@ -177,22 +168,6 @@ class MainWindow(QMainWindow):
         relevant = tx != "apple_speech"
         self._model_label.setEnabled(relevant)
         self._model_combo.setEnabled(relevant)
-        self._update_warning()
-
-    def _update_warning(self, *_args: object) -> None:
-        # mlx-whisper and Apple Foundation Models both load heavy on-device
-        # models and can contend with each other, slowing the run. Warn only on
-        # the explicit pairing; "自動" is left out to avoid false alarms since it
-        # may resolve to a non-conflicting backend.
-        tx = self._tx_combo.currentData()
-        sm = self._sm_combo.currentData()
-        conflict = tx == "mlx_whisper" and sm == "apple_foundation"
-        if conflict:
-            self._warning_label.setText(
-                "⚠️ 文字起こし「mlx-whisper」と要約「Apple Foundation」の組み合わせは、"
-                "Apple のモデルロードと競合して処理が遅くなることがあります。"
-            )
-        self._warning_label.setVisible(conflict)
 
     def _on_files_dropped(self, paths: list[Path]) -> None:
         if self._processing:
