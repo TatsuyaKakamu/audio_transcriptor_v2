@@ -151,6 +151,9 @@ class PipelineResult:
     summary_backend: str = ""
     fallback_occurred: bool = False
     elapsed_seconds: float = 0.0
+    # Why a requested summary was skipped (every backend failed), for surfacing
+    # in the UI/CLI. None when minutes were produced or summary was "none".
+    summary_failure_reason: str | None = None
 
 
 class Pipeline:
@@ -192,6 +195,10 @@ class Pipeline:
         sm_fallback = getattr(self.summary_backend, "fallback_occurred", False)
 
         if minutes is None:
+            reasons = getattr(self.summary_backend, "failure_reasons", [])
+            failure_reason = "; ".join(reasons) if reasons else None
+            if failure_reason:
+                self.logger.warning("Summary skipped; transcript only: %s", failure_reason)
             return PipelineResult(
                 transcript=transcript,
                 minutes=None,
@@ -200,6 +207,7 @@ class Pipeline:
                 summary_backend="none",
                 fallback_occurred=tx_fallback or sm_fallback,
                 elapsed_seconds=time.monotonic() - start,
+                summary_failure_reason=failure_reason,
             )
 
         minutes_md_path = self.writers.write_minutes_markdown(minutes, transcript_md_path)

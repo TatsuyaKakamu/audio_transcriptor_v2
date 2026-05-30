@@ -127,6 +127,18 @@ class TranscriptionWorker(QThread):
             self.log_message.emit("INFO", f"Saved: {result.transcript_md_path}")
             if result.minutes_md_path is not None:
                 self.log_message.emit("INFO", f"議事録: {result.minutes_md_path}")
+            elif result.summary_failure_reason:
+                # The summary backend(s) failed and were swallowed into a
+                # transcript-only result; show why so it isn't a silent skip.
+                self.log_message.emit(
+                    "WARN", f"議事録をスキップしました: {result.summary_failure_reason}"
+                )
+                if "ContextWindow" in result.summary_failure_reason:
+                    self.log_message.emit(
+                        "WARN",
+                        "（文字起こしが Apple モデルのコンテキスト上限 4096 トークンを"
+                        "超えています。Ollama を使うか短い音声でお試しください）",
+                    )
             self.log_message.emit("INFO", f"完了: {path.name}（{elapsed:.1f}s）")
             success_count += 1
             self.progress.emit(i / total_files * 100)
