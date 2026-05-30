@@ -25,7 +25,6 @@ class TranscriptionWorker(QThread):
         language: str,
         model: str,
         cfg: AppConfig,
-        mode: str | None = None,
         transcription_backend: str | None = None,
         summary_backend: str | None = None,
     ) -> None:
@@ -34,16 +33,15 @@ class TranscriptionWorker(QThread):
         self._language = language
         self._model = model
         self._cfg = cfg
-        self._mode = mode
-        # Independent per-axis backend overrides ("auto" / None = follow mode).
+        # Independent per-axis backend overrides. "auto" / None picks the best
+        # available backend (with runtime fallback), so the two stages are
+        # controlled separately.
         self._transcription_backend = transcription_backend
         self._summary_backend = summary_backend
 
     def _build_config(self):
-        """v2 config with the UI's mode/language/model and per-axis backend overrides."""
+        """v2 config with the UI's language/model and per-axis backend overrides."""
         config = load_full_config()
-        # The transcription and summary backends are controlled independently;
-        # "auto" means "let the mode decide" so it is left untouched.
         summary_backend = self._summary_backend
         # Preserve the legacy "[minutes].enabled = false" behaviour unless the UI
         # explicitly asked for a specific summary backend.
@@ -51,7 +49,6 @@ class TranscriptionWorker(QThread):
             summary_backend = "none"
         return override_config(
             config,
-            mode=self._mode or None,
             transcription_backend=self._transcription_backend or None,
             summary_backend=summary_backend or None,
             language=_TRANSCRIBE_LOCALE.get(self._language, config.app.language),

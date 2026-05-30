@@ -4,6 +4,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -20,27 +22,22 @@ from app.services import notifier
 from app.ui.drop_area import SUPPORTED_EXTENSIONS, DropArea
 from app.workers.transcription_worker import TranscriptionWorker
 
-_LANGUAGES = [("Japanese (ja)", "ja"), ("English (en)", "en")]
-# Processing mode (overall preset). The transcription/summary dropdowns below can
-# override each axis independently; "auto" on those means "follow the mode".
-_MODES = [
-    ("自動 (auto)", "auto"),
-    ("Apple ネイティブ", "apple_native"),
-    ("レガシー (mlx-whisper)", "legacy"),
-]
-# Per-axis backend selection (independent of each other). "auto" follows the mode.
+_LANGUAGES = [("日本語 (ja)", "ja"), ("English (en)", "en")]
+# Transcription backend. "自動" = pick the best available and fall back as needed.
 _TRANSCRIPTION_BACKENDS = [
-    ("自動 (auto)", "auto"),
+    ("自動", "auto"),
     ("Apple SpeechAnalyzer", "apple_speech"),
     ("mlx-whisper", "mlx_whisper"),
 ]
+# Summary backend. "自動" = best available; "なし" disables summaries entirely.
 _SUMMARY_BACKENDS = [
-    ("自動 (auto)", "auto"),
+    ("自動", "auto"),
     ("Apple Foundation", "apple_foundation"),
     ("Ollama", "ollama"),
-    ("なし (none)", "none"),
+    ("なし（要約しない）", "none"),
 ]
-# Legacy mlx-whisper model sizes. Ignored by the Apple SpeechAnalyzer backend.
+# mlx-whisper model sizes. Only relevant when mlx-whisper is the transcription
+# backend; the Apple SpeechAnalyzer backend ignores this.
 _MODELS = ["tiny", "base", "small", "medium", "large-v3"]
 _APP_ICON_PATH = Path(__file__).resolve().parent.parent / "assets" / "app_icon.svg"
 
@@ -55,7 +52,6 @@ class MainWindow(QMainWindow):
         self._processing = False
         self._config = load_config()
         full = load_full_config()
-        self._default_mode = full.app.mode
         self._default_tx_backend = full.advanced.transcription_backend
         self._default_sm_backend = full.advanced.summary_backend
         self._setup_ui()
@@ -73,84 +69,26 @@ class MainWindow(QMainWindow):
         self._drop_area.files_dropped.connect(self._on_files_dropped)
         root.addWidget(self._drop_area)
 
-        settings = QHBoxLayout()
-        settings.addWidget(QLabel("処理方式:"))
-        self._mode_combo = QComboBox()
-        for label, value in _MODES:
-            self._mode_combo.addItem(label, value)
-        mode_idx = self._mode_combo.findData(self._default_mode)
-        if mode_idx >= 0:
-            self._mode_combo.setCurrentIndex(mode_idx)
-        self._mode_combo.setToolTip(
-            "音声を処理するバックエンド。\n"
-            "auto: 利用可能な最良のものを自動選択（必要なら mlx-whisper にフォールバック）\n"
-            "Apple ネイティブ: Apple SpeechAnalyzer / Foundation Models（モデル選択は不要）\n"
-            "レガシー: mlx-whisper + Ollama（下のモデル選択が有効）"
-        )
-        self._mode_combo.currentIndexChanged.connect(self._on_settings_changed)
-        settings.addWidget(self._mode_combo)
-        settings.addSpacing(20)
-        settings.addWidget(QLabel("言語:"))
+        # Common: language.
+        lang_row = QHBoxLayout()
+        lang_row.addWidget(QLabel("言語:"))
         self._lang_combo = QComboBox()
         for label, code in _LANGUAGES:
             self._lang_combo.addItem(label, code)
         lang_idx = self._lang_combo.findData(self._config.language)
         if lang_idx >= 0:
             self._lang_combo.setCurrentIndex(lang_idx)
-        settings.addWidget(self._lang_combo)
-        settings.addSpacing(20)
-        self._model_label = QLabel("モデル (legacy):")
-        settings.addWidget(self._model_label)
-        self._model_combo = QComboBox()
-        for m in _MODELS:
-            self._model_combo.addItem(m)
-        if self._config.model in _MODELS:
-            self._model_combo.setCurrentText(self._config.model)
-        self._model_combo.setToolTip(
-            "mlx-whisper（レガシーバックエンド）専用のモデルサイズ。\n"
-            "Apple ネイティブ経路では使われません。"
-        )
-        settings.addWidget(self._model_combo)
-        settings.addStretch()
-        root.addLayout(settings)
+        lang_row.addWidget(self._lang_combo)
+        lang_row.addStretch()
+        root.addLayout(lang_row)
 
-        # Second row: independent per-axis backend selection. "auto" follows the
-        # mode above, so transcription and summary can be controlled separately
-        # (e.g. summary on Apple Foundation only, never Ollama).
-        backends = QHBoxLayout()
-        backends.addWidget(QLabel("文字起こし:"))
-        self._tx_combo = QComboBox()
-        for label, value in _TRANSCRIPTION_BACKENDS:
-            self._tx_combo.addItem(label, value)
-        tx_idx = self._tx_combo.findData(self._default_tx_backend)
-        if tx_idx >= 0:
-            self._tx_combo.setCurrentIndex(tx_idx)
-        self._tx_combo.setToolTip(
-            "文字起こしバックエンド。\n"
-            "auto: 上の処理方式に従って自動選択\n"
-            "Apple SpeechAnalyzer / mlx-whisper を明示指定可能"
-        )
-        self._tx_combo.currentIndexChanged.connect(self._on_settings_changed)
-        backends.addWidget(self._tx_combo)
-        backends.addSpacing(20)
-        backends.addWidget(QLabel("要約:"))
-        self._sm_combo = QComboBox()
-        for label, value in _SUMMARY_BACKENDS:
-            self._sm_combo.addItem(label, value)
-        sm_idx = self._sm_combo.findData(self._default_sm_backend)
-        if sm_idx >= 0:
-            self._sm_combo.setCurrentIndex(sm_idx)
-        self._sm_combo.setToolTip(
-            "要約バックエンド。\n"
-            "auto: 上の処理方式に従って自動選択\n"
-            "Apple Foundation / Ollama を明示指定、none で要約を無効化"
-        )
-        backends.addWidget(self._sm_combo)
-        backends.addStretch()
-        root.addLayout(backends)
+        # Two independent stages, each in its own group so it's obvious that the
+        # transcription and summary backends are chosen separately.
+        root.addWidget(self._build_transcription_group())
+        root.addWidget(self._build_summary_group())
 
-        # Apple native / explicit backends need no model selection; reflect state.
-        self._on_settings_changed()
+        # Reflect the initial backend choice on the model control.
+        self._on_transcription_changed()
 
         self._status_label = QLabel("待機中")
         root.addWidget(self._status_label)
@@ -171,21 +109,63 @@ class MainWindow(QMainWindow):
         clear_btn.clicked.connect(self._log_view.clear)
         root.addWidget(clear_btn, alignment=Qt.AlignRight)
 
-        self.resize(640, 540)
+        self.resize(640, 560)
 
-    def _on_settings_changed(self, *_args: object) -> None:
-        # The model dropdown only applies to the mlx-whisper backend. Disable it
-        # when mlx-whisper cannot run: an explicit Apple SpeechAnalyzer choice, or
-        # auto transcription under Apple-native mode. It stays enabled when mlx is
-        # explicitly chosen or auto could fall back to it.
+    def _build_transcription_group(self) -> QGroupBox:
+        group = QGroupBox("文字起こし")
+        form = QFormLayout(group)
+
+        self._tx_combo = QComboBox()
+        for label, value in _TRANSCRIPTION_BACKENDS:
+            self._tx_combo.addItem(label, value)
+        tx_idx = self._tx_combo.findData(self._default_tx_backend)
+        if tx_idx >= 0:
+            self._tx_combo.setCurrentIndex(tx_idx)
+        self._tx_combo.setToolTip(
+            "文字起こしに使うエンジン。\n"
+            "自動: 利用可能な最良のものを選択（必要なら mlx-whisper にフォールバック）\n"
+            "Apple SpeechAnalyzer / mlx-whisper を明示指定することもできる。"
+        )
+        self._tx_combo.currentIndexChanged.connect(self._on_transcription_changed)
+        form.addRow("エンジン:", self._tx_combo)
+
+        self._model_combo = QComboBox()
+        for m in _MODELS:
+            self._model_combo.addItem(m)
+        if self._config.model in _MODELS:
+            self._model_combo.setCurrentText(self._config.model)
+        self._model_combo.setToolTip(
+            "mlx-whisper のモデルサイズ。\n"
+            "Apple SpeechAnalyzer では使われないため、その場合は無効化される。"
+        )
+        self._model_label = QLabel("モデル:")
+        form.addRow(self._model_label, self._model_combo)
+        return group
+
+    def _build_summary_group(self) -> QGroupBox:
+        group = QGroupBox("要約")
+        form = QFormLayout(group)
+
+        self._sm_combo = QComboBox()
+        for label, value in _SUMMARY_BACKENDS:
+            self._sm_combo.addItem(label, value)
+        sm_idx = self._sm_combo.findData(self._default_sm_backend)
+        if sm_idx >= 0:
+            self._sm_combo.setCurrentIndex(sm_idx)
+        self._sm_combo.setToolTip(
+            "要約（議事録）に使うエンジン。\n"
+            "自動: 利用可能な最良のものを選択（必要なら Ollama にフォールバック）\n"
+            "Apple Foundation / Ollama を明示指定、または「なし」で要約を無効化。"
+        )
+        form.addRow("エンジン:", self._sm_combo)
+        return group
+
+    def _on_transcription_changed(self, *_args: object) -> None:
+        # The model dropdown only applies to mlx-whisper. Disable it for an
+        # explicit Apple SpeechAnalyzer choice; keep it enabled for mlx-whisper
+        # and for "自動" (which may fall back to mlx-whisper).
         tx = self._tx_combo.currentData()
-        mode = self._mode_combo.currentData()
-        if tx == "mlx_whisper":
-            relevant = True
-        elif tx == "apple_speech":
-            relevant = False
-        else:  # auto -> depends on the mode
-            relevant = mode != "apple_native"
+        relevant = tx != "apple_speech"
         self._model_label.setEnabled(relevant)
         self._model_combo.setEnabled(relevant)
 
@@ -211,17 +191,15 @@ class MainWindow(QMainWindow):
         self._append_log("INFO", f"{len(valid)} files dropped")
         language: str = self._lang_combo.currentData()
         model: str = self._model_combo.currentText()
-        mode: str = self._mode_combo.currentData()
         tx_backend: str = self._tx_combo.currentData()
         sm_backend: str = self._sm_combo.currentData()
-        self._start_processing(valid, language, model, mode, tx_backend, sm_backend)
+        self._start_processing(valid, language, model, tx_backend, sm_backend)
 
     def _start_processing(
         self,
         files: list[Path],
         language: str,
         model: str,
-        mode: str,
         transcription_backend: str,
         summary_backend: str,
     ) -> None:
@@ -234,9 +212,8 @@ class MainWindow(QMainWindow):
             language,
             model,
             self._config,
-            mode,
-            transcription_backend,
-            summary_backend,
+            transcription_backend=transcription_backend,
+            summary_backend=summary_backend,
         )
         self._worker.log_message.connect(self._append_log)
         self._worker.status_update.connect(self._status_label.setText)

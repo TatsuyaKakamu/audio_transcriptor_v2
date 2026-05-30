@@ -103,13 +103,17 @@ python -m app.cli transcribe path/to/meeting.m4a \
 
 ### 文字起こし／要約の個別指定
 
-`mode` は全体プリセット。文字起こしと要約のバックエンドは **それぞれ独立に** 固定できる
-（`auto` のときは `mode` に従う）。たとえば文字起こしは auto のまま、要約だけ Apple Foundation に
-固定して Ollama を使わない、といった制御が可能。
+文字起こしと要約のバックエンドは **それぞれ独立に** 選べる。各軸の「自動」は利用可能な最良の
+バックエンドを選び（必要ならフォールバックする）、明示指定すればその軸だけ固定できる。
+たとえば文字起こしは自動のまま、要約だけ Apple Foundation に固定して Ollama を使わない、
+といった制御が可能。
 
-- GUI: 「処理方式」に加えて「文字起こし」「要約」のドロップダウンで個別に選択
+- GUI: 「文字起こし」「要約」の各セクションでエンジンを個別に選択（モデルは文字起こし側）
 - CLI: `--transcription-backend` / `--summary-backend` フラグ
 - 設定ファイル: `[advanced] transcription_backend` / `summary_backend`
+
+> 旧来の `mode`（auto / apple_native / legacy）は CLI の `--mode` と設定ファイルの
+> `[app] mode` に残っている全体プリセット。個別指定（上記）が優先される。
 
 | 設定 | 選択肢 |
 |---|---|
