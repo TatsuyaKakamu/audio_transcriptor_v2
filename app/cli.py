@@ -168,13 +168,23 @@ def cmd_scan(cfg: AppConfig | None = None, lock_path: Path | None = None) -> int
         return _process_pending(cfg)
 
 
-def cmd_capabilities() -> int:
-    """Detect environment capabilities and print the auto-selected backends."""
-    from app.config import load_full_config
+def cmd_capabilities(
+    *,
+    mode: str | None = None,
+    transcription_backend: str | None = None,
+    summary_backend: str | None = None,
+) -> int:
+    """Detect environment capabilities and print the selected backends."""
+    from app.config import load_full_config, override_config
     from app.core.capabilities import detect_capabilities
     from app.core.pipeline import build_pipeline, describe_selection
 
-    cfg = load_full_config()
+    cfg = override_config(
+        load_full_config(),
+        mode=mode,
+        transcription_backend=transcription_backend,
+        summary_backend=summary_backend,
+    )
     caps = detect_capabilities(cfg)
     print(
         "Capabilities:\n"
@@ -195,14 +205,25 @@ def cmd_capabilities() -> int:
     return 0
 
 
-def cmd_transcribe(paths: list[str]) -> int:
-    """Run the auto-selected pipeline over one or more audio files."""
-    from app.config import load_full_config
+def cmd_transcribe(
+    paths: list[str],
+    *,
+    mode: str | None = None,
+    transcription_backend: str | None = None,
+    summary_backend: str | None = None,
+) -> int:
+    """Run the selected pipeline over one or more audio files."""
+    from app.config import load_full_config, override_config
     from app.core.pipeline import PipelineOptions, build_pipeline, describe_selection
     from app.summary.base import SummaryOptions
     from app.transcription.base import TranscriptionOptions
 
-    cfg = load_full_config()
+    cfg = override_config(
+        load_full_config(),
+        mode=mode,
+        transcription_backend=transcription_backend,
+        summary_backend=summary_backend,
+    )
     try:
         pipeline, selection = build_pipeline(cfg)
     except Exception as e:  # noqa: BLE001
@@ -242,13 +263,37 @@ def cmd_transcribe(paths: list[str]) -> int:
     return 1 if errors else 0
 
 
+def _add_backend_overrides(parser: argparse.ArgumentParser) -> None:
+    """Per-run overrides letting transcription and summary be controlled separately."""
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "apple_native", "legacy"],
+        default=None,
+        help="override [app] mode (overall backend preset)",
+    )
+    parser.add_argument(
+        "--transcription-backend",
+        choices=["auto", "apple_speech", "mlx_whisper"],
+        default=None,
+        help="override [advanced] transcription_backend",
+    )
+    parser.add_argument(
+        "--summary-backend",
+        choices=["auto", "apple_foundation", "ollama", "none"],
+        default=None,
+        help="override [advanced] summary_backend (e.g. 'apple_foundation' to skip Ollama)",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="app.cli", description="audio-transcriptor headless CLI")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("scan", help="scan watch_dir for pending audio files and transcribe them")
-    sub.add_parser("capabilities", help="show detected backends and the auto selection")
+    cap = sub.add_parser("capabilities", help="show detected backends and the selection")
+    _add_backend_overrides(cap)
     tr = sub.add_parser("transcribe", help="transcribe + summarize specific audio files")
     tr.add_argument("paths", nargs="+", help="audio file paths to process")
+    _add_backend_overrides(tr)
     return p
 
 
@@ -274,9 +319,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         return cmd_scan()
     if args.command == "capabilities":
-        return cmd_capabilities()
+        return cmd_capabilities(
+            mode=args.mode,
+            transcription_backend=args.transcription_backend,
+            summary_backend=args.summary_backend,
+        )
     if args.command == "transcribe":
-        return cmd_transcribe(args.paths)
+        return cmd_transcribe(
+            args.paths,
+            mode=args.mode,
+            transcription_backend=args.transcription_backend,
+            summary_backend=args.summary_backend,
+        )
     return 2
 
 

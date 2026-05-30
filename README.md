@@ -68,7 +68,17 @@ python -m app.cli capabilities
 
 # 指定ファイルを文字起こし＋議事録生成
 python -m app.cli transcribe path/to/meeting.m4a
+
+# 文字起こしと要約を個別に上書き（例: 要約だけ Apple Foundation に固定し Ollama を使わない）
+python -m app.cli transcribe path/to/meeting.m4a --summary-backend apple_foundation
+
+# 文字起こしは mlx-whisper、要約は無効化（文字起こしのみ）
+python -m app.cli transcribe path/to/meeting.m4a \
+    --transcription-backend mlx_whisper --summary-backend none
 ```
+
+`--mode` / `--transcription-backend` / `--summary-backend` は `capabilities` と
+`transcribe` の両方で使え、その実行に限り設定ファイルの値を上書きする。
 
 > `python -m app.cli scan` は Downloads 自動監視（launchd）が内部で呼ぶコマンド。
 
@@ -90,6 +100,25 @@ python -m app.cli transcribe path/to/meeting.m4a
 | `auto` | 利用可能な最良バックエンドを自動選択（推奨） |
 | `apple_native` | Apple Speech + Apple Foundation を要求。失敗時は停止 |
 | `legacy` | mlx-whisper + Ollama を優先 |
+
+### 文字起こし／要約の個別指定
+
+文字起こしと要約のバックエンドは **それぞれ独立に** 選べる。各軸の「自動」は利用可能な最良の
+バックエンドを選び（必要ならフォールバックする）、明示指定すればその軸だけ固定できる。
+たとえば文字起こしは自動のまま、要約だけ Apple Foundation に固定して Ollama を使わない、
+といった制御が可能。
+
+- GUI: 「文字起こし」「要約」の各セクションでエンジンを個別に選択（モデルは文字起こし側）
+- CLI: `--transcription-backend` / `--summary-backend` フラグ
+- 設定ファイル: `[advanced] transcription_backend` / `summary_backend`
+
+> 旧来の `mode`（auto / apple_native / legacy）は CLI の `--mode` と設定ファイルの
+> `[app] mode` に残っている全体プリセット。個別指定（上記）が優先される。
+
+| 設定 | 選択肢 |
+|---|---|
+| 文字起こし | `auto` / `apple_speech` / `mlx_whisper` |
+| 要約 | `auto` / `apple_foundation` / `ollama` / `none` |
 
 - `auto` モードでは実行時の失敗も自動でフォールバックする（例: Apple Foundation が失敗したら Ollama → なし）。
 - **legacy バックエンド（mlx-whisper / Ollama）** を使う場合の事前準備（ffmpeg / Ollama のインストール、対応モデル）は [`docs/usage.md`](docs/usage.md#legacy-バックエンドの事前準備mlx-whisper--ollama) を参照。

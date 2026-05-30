@@ -10,6 +10,7 @@ from app.config.loader import (
     CONFIG_PATH,
     load_config,
     load_full_config,
+    override_config,
 )
 from app.config.schema import (
     AdvancedSection,
@@ -27,6 +28,7 @@ __all__ = [
     "CONFIG_PATH",
     "load_config",
     "load_full_config",
+    "override_config",
     # legacy schema
     "AppConfig",
     "MinutesConfig",

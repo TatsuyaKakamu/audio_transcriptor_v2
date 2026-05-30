@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 
-class BackendUnavailableError(RuntimeError):
+class PipelineError(RuntimeError):
+    """Base class for all backend-abstraction pipeline errors."""
+
+
+class BackendUnavailableError(PipelineError):
     """A backend was explicitly requested but its requirements are not met."""
 
 
-class NoTranscriptionBackendError(RuntimeError):
+class NoTranscriptionBackendError(PipelineError):
     """No usable transcription backend could be selected for this environment."""
 
 
-class TranscriptionFailedError(RuntimeError):
+class TranscriptionFailedError(PipelineError):
     """Transcription was attempted but failed (after any fallbacks)."""
 
 
-class SummaryFailedError(RuntimeError):
+class SummaryFailedError(PipelineError):
     """Summarization was attempted but failed (after any fallbacks)."""
 
 
-class HelperProtocolError(RuntimeError):
+class HelperProtocolError(PipelineError):
     """A Swift helper returned malformed output or signalled an error."""

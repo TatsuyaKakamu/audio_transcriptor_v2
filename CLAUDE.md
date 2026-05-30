@@ -36,13 +36,14 @@ PipelineResult
 
 - 出力は Markdown のみ（`*.transcript.md` / `*.minutes.md`）。JSON サイドカーは出力しない。
 - 中間表現は `app/core/models.py`（`Transcript`, `TranscriptSegment`, `MeetingMinutes`, `ActionItem`）。dict 変換関数も同居（Swift helper との JSON 受け渡しに使用）。
-- 自動選択は `app/core/pipeline.py` の `choose_*` / `*_backend_order`。文字起こしは Apple Speech→mlx-whisper、要約は Apple Foundation→Ollama→none の順。`mode`（auto/apple_native/legacy）と `advanced.*_backend`（明示指定）で上書き。
+- 自動選択は `app/core/pipeline.py` の `choose_*` / `*_backend_order`。文字起こしは Apple Speech→mlx-whisper、要約は Apple Foundation→Ollama→none の順。`mode`（auto/apple_native/legacy）と `advanced.*_backend`（明示指定）で上書き。文字起こしと要約は **独立に** 制御でき（`advanced.transcription_backend` / `advanced.summary_backend`）、片方だけ固定して他方を `auto`（= mode に従う）のままにできる。
+- 設定の実行時上書きは `app/config/loader.py` の `override_config(config, *, mode, transcription_backend, summary_backend, language, model)`。`None` は「設定のまま」。GUI ワーカー（`_build_config`）と CLI（`--mode` / `--transcription-backend` / `--summary-backend`）が共通で使う。各値は enum 検証され、不正なら設定値にフォールバック。
 - 実行時フォールバックは `ChainedTranscriptionBackend` / `ChainedSummaryBackend`。要約が全滅したら `summarize()` は `None` を返し、Pipeline は transcript のみ出力する（auto モードの「none に落とす」挙動）。明示指定時は単一 backend なので失敗は例外で停止。
 - Apple Speech backend は helper の確定チャンク（句読点と無関係に文の途中で切れる）を `app/core/segments.py` の `merge_segments_by_sentence` で文単位ブロックへ再結合してから返す。既定の改行基準は**文末句読点**（日本語 `。！？`、英語は `.` も含む。日本語は小数点・略語・URL の `.` で切れないよう ASCII `.` を除外）と**話者切替**のみ。無音ポーズでは切らない（息継ぎ・言いよどみで文中改行されるため）。保険として `max_speech_sec`（既定 60 秒）が**沈黙を除いた実発話時間**の累積で長過ぎるブロックのみ強制分割する（壁時計経過ではないので長い無音で誤発火しない）。結合後に各ブロックを文末記号位置で再分割するため、断片の途中にある `。` でも確実に改行される。`silence_gap_sec` / `max_block_sec`（壁時計）は opt-in。legacy mlx 経路は `services/segment_merger.merge_by_conversation` が `transcriber.transcribe()` 内で同等処理を行うため、v2 側では二重結合しない。
 - Apple 系 backend は `app/core/helper.py` 経由で Swift CLI（`helpers/apple-transcribe`, `helpers/apple-summarize`）を `subprocess` 実行し stdin/stdout JSON でやり取りする。`run_helper_check`（`--check`）/ `run_json_helper`。helper パスは `advanced.apple_*_path` で固定可能。
 - helper バイナリが無い場合、`resolve_helper_path` が**初回に `swift build -c release` を自動実行**（macOS 26+・`swift` あり・ソース存在時のみ、プロセス内で 1 回だけ）。`AUDIO_TRANSCRIPTOR_NO_HELPER_BUILD` で無効化。`.build/` は gitignore 済み。
 - 設定は `app/config/`（`schema.py` = dataclass / `loader.py` = TOML パース、`__init__.py` で再エクスポート）。`load_full_config()` → `Config`（`.app` / `.advanced` / `.transcription` / `.summary`）。`config.example.toml` 参照。従来の `load_config()` → `AppConfig` は legacy 用に残置。
-- CLI: `python -m app.cli capabilities` で検出結果と選択を表示、`python -m app.cli transcribe <files>` で v2 パイプライン実行。
+- CLI: `python -m app.cli capabilities` で検出結果と選択を表示、`python -m app.cli transcribe <files>` で v2 パイプライン実行。どちらも `--mode` / `--transcription-backend` / `--summary-backend` でその実行限りの上書きが可能（`override_config` 経由）。
 - 重い依存（`mlx_whisper` / `tqdm`）は `transcriber.transcribe()` 内で遅延 import。`app/cli.py` を mlx 無し環境でも import できるようにするため。
 - テスト: `test_capabilities.py`, `test_pipeline_selection.py`, `test_summary_contract.py`, `test_transcription_contract.py`, `test_helper_protocol.py`, `test_models_json.py`, `test_io_markdown_v2.py`, `test_pipeline.py`, `test_segments.py`。Apple helper は `conftest.py` の `make_fake_helper` フィクスチャ（JSON を返す実行可能スタブ）で代用する。
 
@@ -55,7 +56,7 @@ v2 の `advanced.summary_backend = "none"` に変換して尊重する。
 
 ```
 DropArea (DnD, 音声拡張子は io.audio.AUDIO_EXTENSIONS) → MainWindow → TranscriptionWorker (QThread)
-                                  ↓  load_full_config() + UI の言語/モデルで上書き
+                                  ↓  load_full_config() + UI の言語/モデル/バックエンドで上書き（override_config）
                           build_pipeline(Config, Capabilities)  →  describe_selection() をログ出力
                                   ↓
                           Pipeline.run(audio) → TranscriptionBackend → SummaryBackend

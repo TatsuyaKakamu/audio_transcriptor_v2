@@ -14,6 +14,11 @@ language = "ja-JP"
 output_directory = "same_as_audio"
 
 [advanced]
+# Transcription and summary backends are selected independently. "auto" follows
+# [app] mode; set an explicit backend to pin just that axis. Example: keep
+# transcription on auto but force summaries through Apple only (never Ollama):
+#   transcription_backend = "auto"
+#   summary_backend = "apple_foundation"
 # auto | apple_speech | mlx_whisper
 transcription_backend = "auto"
 # auto | apple_foundation | ollama | none

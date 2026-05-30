@@ -1,11 +1,10 @@
 import time
-from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from app.config import AppConfig, load_full_config
-from app.core.errors import NoTranscriptionBackendError
+from app.config import AppConfig, load_full_config, override_config
+from app.core.errors import PipelineError
 from app.core.pipeline import PipelineOptions, build_pipeline, describe_selection
 from app.summary.base import SummaryOptions
 from app.transcription.base import TranscriptionOptions
@@ -26,35 +25,37 @@ class TranscriptionWorker(QThread):
         language: str,
         model: str,
         cfg: AppConfig,
-        mode: str | None = None,
+        transcription_backend: str | None = None,
+        summary_backend: str | None = None,
     ) -> None:
         super().__init__()
         self._files = files
         self._language = language
         self._model = model
         self._cfg = cfg
-        self._mode = mode
+        # Independent per-axis backend overrides. "auto" / None picks the best
+        # available backend (with runtime fallback), so the two stages are
+        # controlled separately.
+        self._transcription_backend = transcription_backend
+        self._summary_backend = summary_backend
 
     def _build_config(self):
-        """v2 config with the UI's mode/language/model and the legacy minutes toggle."""
+        """v2 config with the UI's language/model and per-axis backend overrides."""
         config = load_full_config()
-        advanced = config.advanced
-        # Preserve the legacy "[minutes].enabled = false" behaviour.
+        summary_backend = self._summary_backend
+        # Honor the legacy "[minutes].enabled = false" kill switch. CLAUDE.md
+        # documents that it maps to summary_backend = "none" in the GUI flow, so
+        # it must win over the configured/selected backend too — not just the
+        # "auto" default. Otherwise a config that pins an explicit summary
+        # backend (apple_foundation / ollama) would silently re-enable minutes.
         if not self._cfg.minutes.enabled:
-            advanced = replace(advanced, summary_backend="none")
-        # The UI can pick the processing mode (auto / apple_native / legacy)
-        # explicitly; fall back to the configured mode when not provided.
-        app = replace(
-            config.app,
-            language=_TRANSCRIBE_LOCALE.get(self._language, config.app.language),
-        )
-        if self._mode:
-            app = replace(app, mode=self._mode)
-        return replace(
+            summary_backend = "none"
+        return override_config(
             config,
-            app=app,
-            advanced=advanced,
-            transcription=replace(config.transcription, model=self._model),
+            transcription_backend=self._transcription_backend or None,
+            summary_backend=summary_backend or None,
+            language=_TRANSCRIBE_LOCALE.get(self._language, config.app.language),
+            model=self._model,
         )
 
     def run(self) -> None:
@@ -69,8 +70,12 @@ class TranscriptionWorker(QThread):
         )
         try:
             pipeline, selection = build_pipeline(config)
-        except NoTranscriptionBackendError as e:
-            self.log_message.emit("ERROR", f"利用可能な文字起こしバックエンドがありません: {e}")
+        except PipelineError as e:
+            # Covers both a missing transcription backend and an explicitly
+            # requested backend that is unavailable on this machine
+            # (BackendUnavailableError). Emit finished so the UI does not stay
+            # stuck in the processing state.
+            self.log_message.emit("ERROR", f"バックエンドを準備できませんでした: {e}")
             self.finished.emit(True, 0, 0)
             return
 
