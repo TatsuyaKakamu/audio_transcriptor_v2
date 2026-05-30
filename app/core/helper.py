@@ -14,6 +14,8 @@ import os
 import platform
 import shutil
 import subprocess
+import threading
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 from app.core.errors import HelperProtocolError
@@ -40,6 +42,24 @@ def _built_binary(name: str) -> Path | None:
         return None
     candidate = pkg / ".build" / "release" / name
     return candidate if candidate.exists() else None
+
+
+def _built_binary_is_stale(name: str, binary: Path) -> bool:
+    """True when a Swift source is newer than the cached binary.
+
+    Without this, a `git pull` that changes the helper sources would keep using
+    the previously built binary forever (resolve returns the cache first), so
+    new behaviour like progress streaming would silently never run.
+    """
+    pkg = _HELPER_PACKAGES.get(name)
+    if pkg is None:
+        return False
+    try:
+        binary_mtime = binary.stat().st_mtime
+        sources = [pkg / "Package.swift", *(pkg / "Sources").rglob("*.swift")]
+        return any(src.stat().st_mtime > binary_mtime for src in sources if src.exists())
+    except OSError:
+        return False
 
 
 def _macos_supports_helpers() -> bool:
@@ -106,14 +126,21 @@ def resolve_helper_path(name: str, explicit_path: str | None = None) -> Path | N
         return candidate if candidate.exists() else None
 
     built = _built_binary(name)
-    if built is not None:
+    if built is not None and not _built_binary_is_stale(name, built):
         return built
 
     found = shutil.which(name)
-    if found:
+    if built is None and found:
         return Path(found)
 
-    return _maybe_build_helper(name)
+    # No binary yet, or the cached one is stale: (re)build. Fall back to whatever
+    # we already had if the build is skipped (non-macOS, opted out) or fails.
+    rebuilt = _maybe_build_helper(name)
+    if rebuilt is not None:
+        return rebuilt
+    if built is not None:
+        return built
+    return Path(found) if found else None
 
 
 def _run(path: Path, args: list[str], input_text: str | None, timeout: float | None) -> str:
@@ -148,6 +175,110 @@ def _parse_envelope(stdout: str, helper_name: str) -> dict:
     return envelope
 
 
+def _extract_envelope(
+    lines: Iterable[str],
+    helper_name: str,
+    progress_callback: Callable[[dict], None] | None = None,
+) -> dict:
+    """Pick the result envelope out of a helper's newline-delimited JSON output.
+
+    Helpers may interleave progress notices (``{"progress": {...}}``) before the
+    final result envelope (the object carrying ``"ok"``). Progress objects are
+    dispatched to ``progress_callback`` as they arrive; the last envelope wins.
+    Lines that are not JSON objects are ignored so a single-line response (the
+    common case) and a streamed multi-line response are both handled.
+    """
+    envelope: dict | None = None
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if "ok" not in obj and isinstance(obj.get("progress"), dict):
+            if progress_callback is not None:
+                progress_callback(obj["progress"])
+            continue
+        envelope = obj
+    if envelope is None:
+        raise HelperProtocolError(f"helper {helper_name} returned no JSON envelope")
+    return envelope
+
+
+def _stream_lines(
+    path: Path, args: list[str], input_text: str | None, timeout: float | None
+) -> Iterator[str]:
+    """Run a helper and yield its stdout lines as they arrive.
+
+    Used when a progress callback is supplied so notices reach the UI live
+    instead of all at once after the process exits. Enforces ``timeout`` with a
+    watchdog that kills the process; surfaces stderr only when nothing was
+    written to stdout (parity with the buffered ``_run``).
+    """
+    try:
+        proc = subprocess.Popen(
+            [str(path), *args],
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as e:
+        raise HelperProtocolError(f"failed to execute helper {path}: {e}") from e
+
+    # Drain stderr on a separate thread. The Apple frameworks can be chatty on
+    # stderr; if we only read stdout it can fill the stderr pipe buffer and
+    # deadlock the helper mid-transcription (so progress would never advance).
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr is not None:
+            for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    timed_out = False
+    timer: threading.Timer | None = None
+    if timeout is not None:
+
+        def _kill() -> None:
+            nonlocal timed_out
+            timed_out = True
+            proc.kill()
+
+        timer = threading.Timer(timeout, _kill)
+        timer.start()
+
+    yielded = 0
+    try:
+        if input_text is not None and proc.stdin is not None:
+            proc.stdin.write(input_text)
+            proc.stdin.close()
+        assert proc.stdout is not None
+        # readline (not `for line in proc.stdout`) so each line is delivered as
+        # soon as it is flushed, rather than waiting for a read-ahead block.
+        for line in iter(proc.stdout.readline, ""):
+            yielded += 1
+            yield line
+        proc.wait()
+    finally:
+        if timer is not None:
+            timer.cancel()
+        stderr_thread.join(timeout=1.0)
+
+    if timed_out:
+        raise HelperProtocolError(f"helper {path.name} timed out after {timeout}s")
+    if yielded == 0 and proc.returncode not in (0, None):
+        stderr = "".join(stderr_chunks).strip()
+        raise HelperProtocolError(f"helper {path.name} exited {proc.returncode}: {stderr[:200]}")
+
+
 def run_helper_check(name: str, explicit_path: str | None = None) -> bool:
     """Return True iff `<helper> --check` reports availability."""
     path = resolve_helper_path(name, explicit_path)
@@ -169,8 +300,13 @@ def run_json_helper(
     input_json: dict | None = None,
     timeout: float | None = None,
     explicit_path: str | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     """Run a helper, returning the inner payload of an `{"ok": true, ...}` envelope.
+
+    When ``progress_callback`` is given the helper is run in streaming mode and
+    any ``{"progress": {...}}`` notices it emits before the final envelope are
+    forwarded live. Without it the helper is run buffered (the common case).
 
     Raises HelperProtocolError when the helper is missing, crashes, returns
     malformed JSON, or reports `ok: false`.
@@ -180,8 +316,13 @@ def run_json_helper(
         raise HelperProtocolError(f"helper {name} not found")
 
     input_text = json.dumps(input_json) if input_json is not None else None
-    stdout = _run(path, args, input_text=input_text, timeout=timeout)
-    envelope = _parse_envelope(stdout, name)
+    if progress_callback is not None:
+        envelope = _extract_envelope(
+            _stream_lines(path, args, input_text, timeout), name, progress_callback
+        )
+    else:
+        stdout = _run(path, args, input_text=input_text, timeout=timeout)
+        envelope = _extract_envelope(stdout.splitlines(), name)
 
     if not envelope.get("ok"):
         error = envelope.get("error") or {}

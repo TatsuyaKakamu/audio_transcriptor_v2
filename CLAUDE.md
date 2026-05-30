@@ -65,7 +65,16 @@ DropArea (DnD, 音声拡張子は io.audio.AUDIO_EXTENSIONS) → MainWindow → 
                           経路（backend 名・fallback 有無）をログ出力
 ```
 
-> 進捗はファイル単位（Apple helper 経路はフレーム単位の進捗を返さないため）。
+> 進捗は「ファイル単位 + ファイル内の文字起こし進捗」を合成して表示する。
+> `Pipeline.run(audio, options, progress_callback)` が文字起こしフェーズの進捗を
+> fraction（0.0–1.0）で通知し、`TranscriptionWorker` が
+> `((ファイル index) + fraction) / 総ファイル数 * 100` に変換して `progress` シグナルへ流す。
+> 各 backend の進捗源:
+> - `mlx_whisper`: レガシー `transcriber.transcribe` の `progress_callback`（tqdm フック、`processed/total`）を fraction に変換。
+> - `apple_speech`: Swift helper が `SpeechTranscriber.results` のタイムスタンプ（`.audioTimeRange`）と
+>   音声全体長から `{"progress": {"fraction": ...}}` 行を stdout へ逐次出力。`helper.py` の
+>   `run_json_helper(..., progress_callback=...)` が `subprocess.Popen` でストリーム読みし、
+>   progress 行を dispatch しつつ最後の `{"ok": ...}` 行を envelope として返す（progress_callback 無指定時は従来どおりバッファ実行）。
 > 旧 mlx 固定フロー（`vad.preprocess_with_vad` → `mlx_whisper.transcribe` → `normalize_segments`）は
 > `mlx_whisper` backend 内部に内包される。
 

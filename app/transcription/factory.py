@@ -9,7 +9,11 @@ from app.config import Config
 from app.core.errors import TranscriptionFailedError
 from app.core.models import Transcript
 from app.transcription.apple_speech import AppleSpeechTranscriptionBackend
-from app.transcription.base import TranscriptionBackend, TranscriptionOptions
+from app.transcription.base import (
+    ProgressCallback,
+    TranscriptionBackend,
+    TranscriptionOptions,
+)
 from app.transcription.mlx_whisper import MlxWhisperTranscriptionBackend
 from app.transcription.none import NoneTranscriptionBackend
 
@@ -43,11 +47,16 @@ class ChainedTranscriptionBackend(TranscriptionBackend):
     def is_available(self) -> bool:
         return any(b.is_available() for b in self._backends)
 
-    def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> Transcript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions,
+        progress_callback: ProgressCallback | None = None,
+    ) -> Transcript:
         last_error: Exception | None = None
         for index, backend in enumerate(self._backends):
             try:
-                transcript = backend.transcribe(audio_path, options)
+                transcript = backend.transcribe(audio_path, options, progress_callback)
                 self.fallback_occurred = index > 0
                 if index > 0:
                     logger.info("transcription fell back to %s", backend.name)

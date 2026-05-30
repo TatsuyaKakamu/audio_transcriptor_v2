@@ -118,3 +118,49 @@ def test_mlx_whisper_backend_failure_raises(monkeypatch) -> None:
     monkeypatch.setattr(transcriber, "transcribe", boom)
     with pytest.raises(TranscriptionFailedError):
         MlxWhisperTranscriptionBackend(Config()).transcribe(Path("/x.wav"), _options())
+
+
+def test_mlx_whisper_backend_forwards_progress_as_fraction(monkeypatch) -> None:
+    from app.services import transcriber
+
+    def fake_transcribe(source_path, model, language, progress_callback=None, use_vad=True):
+        if progress_callback is not None:
+            progress_callback(1, 4, 0.0)  # 25%
+            progress_callback(4, 4, 0.0)  # 100%
+        return TranscriptionResult(
+            source_path=source_path, language=language, model=model, segments=[]
+        )
+
+    monkeypatch.setattr(transcriber, "transcribe", fake_transcribe)
+    fractions: list[float] = []
+    MlxWhisperTranscriptionBackend(Config()).transcribe(
+        Path("/tmp/meeting.wav"), _options(), fractions.append
+    )
+    assert fractions == [0.25, 1.0]
+
+
+def test_apple_speech_backend_forwards_progress_fraction(tmp_path) -> None:
+    import json as _json
+    import stat
+
+    # A helper stub that streams one progress notice then the final envelope.
+    payload = _json.dumps({"ok": True, "transcript": _TRANSCRIPT_PAYLOAD})
+    script = tmp_path / "apple-transcribe"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'if "--check" in sys.argv:\n'
+        '    sys.stdout.write(\'{"ok": true}\\n\'); sys.exit(0)\n'
+        'sys.stdout.write(\'{"progress": {"fraction": 0.5}}\\n\')\n'
+        f"sys.stdout.write({_json.dumps(payload)} + '\\n')\n",
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    cfg = Config(advanced=AdvancedSection(apple_transcribe_path=str(script)))
+    fractions: list[float] = []
+    transcript = AppleSpeechTranscriptionBackend(cfg).transcribe(
+        Path("/tmp/meeting.wav"), _options(), fractions.append
+    )
+    assert fractions == [0.5]
+    assert len(transcript.segments) == 2

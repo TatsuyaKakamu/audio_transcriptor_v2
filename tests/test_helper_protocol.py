@@ -65,6 +65,56 @@ def test_run_json_helper_ok_false_raises(make_fake_helper) -> None:
     assert "MODEL_UNAVAILABLE" in str(exc.value)
 
 
+def test_run_json_helper_tolerates_progress_lines_without_callback(tmp_path) -> None:
+    # Even without a callback, leading progress notices must not break parsing.
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.5}}\\n\')\n'
+        'sys.stdout.write(\'{"ok": true, "transcript": {"backend": "apple_speech"}}\\n\')\n',
+    )
+    out = run_json_helper(name="apple-transcribe", args=["--input", "x"], explicit_path=str(helper))
+    assert out["ok"] is True
+    assert out["transcript"]["backend"] == "apple_speech"
+
+
+def test_run_json_helper_streams_progress_to_callback(tmp_path) -> None:
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.25}}\\n\')\n'
+        'sys.stdout.write(\'{"progress": {"fraction": 0.75}}\\n\')\n'
+        'sys.stdout.write(\'{"ok": true, "transcript": {"backend": "apple_speech"}}\\n\')\n',
+    )
+    seen: list[dict] = []
+    out = run_json_helper(
+        name="apple-transcribe",
+        args=["--input", "x"],
+        explicit_path=str(helper),
+        progress_callback=seen.append,
+    )
+    assert out["ok"] is True
+    assert [p["fraction"] for p in seen] == [0.25, 0.75]
+
+
+def test_run_json_helper_streaming_no_envelope_raises(tmp_path) -> None:
+    helper = _write_exec(
+        tmp_path / "apple-transcribe",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'sys.stdout.write(\'{"progress": {"fraction": 0.5}}\\n\')\n',
+    )
+    with pytest.raises(HelperProtocolError):
+        run_json_helper(
+            name="apple-transcribe",
+            args=["--input", "x"],
+            explicit_path=str(helper),
+            progress_callback=lambda _p: None,
+        )
+
+
 def test_run_json_helper_non_json_raises(tmp_path) -> None:
     helper = _write_exec(
         tmp_path / "apple-summarize",
@@ -83,6 +133,39 @@ def test_resolve_helper_path_prefers_explicit(make_fake_helper) -> None:
     helper = make_fake_helper("apple-summarize", check={"ok": True}, main={"ok": True})
     assert resolve_helper_path("apple-summarize", str(helper)) == helper
     assert resolve_helper_path("apple-summarize", "/missing") is None
+
+
+def test_built_binary_used_when_fresh(monkeypatch, tmp_path) -> None:
+    binary = tmp_path / "apple-transcribe"
+    binary.write_text("bin")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: binary)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: False)
+    rebuilt: list = []
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: rebuilt.append(name))
+    assert resolve_helper_path("apple-transcribe") == binary
+    assert rebuilt == []  # fresh binary -> no rebuild
+
+
+def test_stale_binary_triggers_rebuild(monkeypatch, tmp_path) -> None:
+    stale = tmp_path / "old-apple-transcribe"
+    stale.write_text("old")
+    fresh = tmp_path / "new-apple-transcribe"
+    fresh.write_text("new")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: stale)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: True)
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: fresh)
+    # Stale cache must be rebuilt and the fresh binary returned.
+    assert resolve_helper_path("apple-transcribe") == fresh
+
+
+def test_stale_binary_falls_back_when_rebuild_unavailable(monkeypatch, tmp_path) -> None:
+    stale = tmp_path / "apple-transcribe"
+    stale.write_text("old")
+    monkeypatch.setattr(helper_mod, "_built_binary", lambda name: stale)
+    monkeypatch.setattr(helper_mod, "_built_binary_is_stale", lambda name, b: True)
+    monkeypatch.setattr(helper_mod, "_maybe_build_helper", lambda name: None)
+    # Build skipped (e.g. non-macOS): keep using the cached binary, don't break.
+    assert resolve_helper_path("apple-transcribe") == stale
 
 
 def _no_build_called(monkeypatch) -> list:
