@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from app.config import AppConfig, load_full_config, override_config
-from app.core.errors import NoTranscriptionBackendError
+from app.core.errors import PipelineError
 from app.core.pipeline import PipelineOptions, build_pipeline, describe_selection
 from app.summary.base import SummaryOptions
 from app.transcription.base import TranscriptionOptions
@@ -43,9 +43,12 @@ class TranscriptionWorker(QThread):
         """v2 config with the UI's language/model and per-axis backend overrides."""
         config = load_full_config()
         summary_backend = self._summary_backend
-        # Preserve the legacy "[minutes].enabled = false" behaviour unless the UI
-        # explicitly asked for a specific summary backend.
-        if not self._cfg.minutes.enabled and summary_backend in (None, "auto"):
+        # Honor the legacy "[minutes].enabled = false" kill switch. CLAUDE.md
+        # documents that it maps to summary_backend = "none" in the GUI flow, so
+        # it must win over the configured/selected backend too — not just the
+        # "auto" default. Otherwise a config that pins an explicit summary
+        # backend (apple_foundation / ollama) would silently re-enable minutes.
+        if not self._cfg.minutes.enabled:
             summary_backend = "none"
         return override_config(
             config,
@@ -67,8 +70,12 @@ class TranscriptionWorker(QThread):
         )
         try:
             pipeline, selection = build_pipeline(config)
-        except NoTranscriptionBackendError as e:
-            self.log_message.emit("ERROR", f"利用可能な文字起こしバックエンドがありません: {e}")
+        except PipelineError as e:
+            # Covers both a missing transcription backend and an explicitly
+            # requested backend that is unavailable on this machine
+            # (BackendUnavailableError). Emit finished so the UI does not stay
+            # stuck in the processing state.
+            self.log_message.emit("ERROR", f"バックエンドを準備できませんでした: {e}")
             self.finished.emit(True, 0, 0)
             return
 
